@@ -1278,6 +1278,15 @@ gst_gl_context_egl_activate (GstGLContext * context, gboolean activate)
     }
     result = eglMakeCurrent (egl->egl_display, egl->egl_surface,
         egl->egl_surface, egl->egl_context);
+#if GST_GL_HAVE_WINDOW_WAYLAND
+    if (GST_IS_GL_WINDOW_WAYLAND_EGL (context->window)) {
+      if (eglSwapInterval (egl->egl_display, 0) == EGL_TRUE) {
+        GST_INFO ("Set EGL swap interval to 0");
+      } else {
+        GST_INFO ("Failed to set EGL swap interval to 0");
+      }
+    }
+#endif
   } else {
     result = eglMakeCurrent (egl->egl_display, EGL_NO_SURFACE,
         EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -1699,12 +1708,7 @@ gst_gl_context_egl_fetch_dma_formats (GstGLContext * context)
 
   for (i = 0; i < num_formats; i++) {
     EGLint num_mods = 0;
-    GstVideoFormat gst_format;
     GstGLDmaFormat dma_frmt;
-
-    gst_format = gst_video_dma_drm_fourcc_to_format (formats[i]);
-    if (gst_format == GST_VIDEO_FORMAT_UNKNOWN)
-      continue;
 
     dma_frmt.fourcc = formats[i];
     dma_frmt.modifiers = NULL;
