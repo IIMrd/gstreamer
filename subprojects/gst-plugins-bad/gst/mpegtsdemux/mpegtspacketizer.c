@@ -505,7 +505,7 @@ mpegts_packetizer_parse_adaptation_field_control (MpegTSPacketizer2 *packetizer,
         if (!use_base_temi_url) {
           guint8 url_scheme = *data++;
           guint8 url_path_length = *data++;
-          guint8 url_path[url_path_length + 1]; // +1 para anyadir caracter null
+          gchar url_path[url_path_length + 1];  // +1 para anyadir caracter null
           int i;
           ////g_print("PREVIOUS URL PATH (af_descr_tag == 0x05): %s\n", packet->url_path);
           for (i = 0; i < url_path_length; i++) {
@@ -603,9 +603,7 @@ mpegts_packetizer_parse_adaptation_field_control (MpegTSPacketizer2 *packetizer,
           //packet->ntp_timestamp = ntp_timestamp;//da problemas de lectura en aplicacion final
           packet->has_ntp_timestamp = 1;
         }
-        /*if(!has_ntp){
-           packet->has_ntp_timestamp = 0;
-           } */
+
         if (has_ptp) {
           int i;
           guint8 ptp_timestamp[10];

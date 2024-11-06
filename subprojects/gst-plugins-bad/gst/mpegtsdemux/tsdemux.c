@@ -316,6 +316,13 @@ enum
 
 /* Pad functions */
 
+/* Signals */
+enum
+{
+  SIGNAL_NTP_TIMESTAMP,
+  LAST_SIGNAL
+};
+
 
 /* mpegtsbase methods */
 static void
@@ -355,6 +362,8 @@ static gboolean sink_query (MpegTSBase * base, GstQuery * query);
 static void gst_ts_demux_check_and_sync_streams (GstTSDemux * demux,
     GstClockTime time);
 static void handle_psi (MpegTSBase * base, GstMpegtsSection * section);
+
+static guint tsdemux_signals[LAST_SIGNAL] = { 0 };
 
 #define gst_ts_demux_parent_class parent_class
 G_DEFINE_TYPE (GstTSDemux, gst_ts_demux, GST_TYPE_MPEGTS_BASE);
@@ -456,6 +465,18 @@ gst_ts_demux_class_init (GstTSDemuxClass *klass)
       g_param_spec_string ("url-path", "Url Path",
           "Devuelve la direccion url hbbtv",
           "------", G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
+
+  /**
+   * tsdemux::ntp-timestamp:
+   * @object: the #GstTSDemux
+   * @ntp_timestamp_h: the ntp timestamp1
+   * @ntp_timestamp_l: the ntp timestamp2
+   * @pts: the pts (from running time)
+   */
+  tsdemux_signals[SIGNAL_NTP_TIMESTAMP] =
+      g_signal_new ("ntp-timestamp", G_TYPE_FROM_CLASS (klass),
+      G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 3, G_TYPE_UINT,
+      G_TYPE_UINT, G_TYPE_UINT64);
   //endmod
 
   element_class = GST_ELEMENT_CLASS (klass);
@@ -2902,15 +2923,21 @@ gst_ts_demux_queue_data (GstTSDemux *demux, TSDemuxStream *stream,
 
       /* parse the header */
       gst_ts_demux_parse_pes_header (demux, stream, data, size, packet->offset);
-      demux->ntp_timestamp1 = packet->ntp_timestamp1;   //mod
-      demux->ntp_timestamp2 = packet->ntp_timestamp2;
       if (packet->has_url_path == 1) {
-        int i = 0;
         ////g_print("DMX:packet->url_path: >>%s<< >(%d)<\n", packet->url_path, packet->url_path_length);
         demux->url_path = strdup (packet->url_path);
         ////g_print("DMX:demux->url_path: >>%s<<\n", demux->url_path);
         packet->has_url_path = 0;
+      }
+      if (packet->has_ntp_timestamp == 1) {
+        demux->ntp_timestamp1 = packet->ntp_timestamp1;
+        demux->ntp_timestamp2 = packet->ntp_timestamp2;
+        packet->has_ntp_timestamp = 0;
+
+        g_signal_emit (demux, tsdemux_signals[SIGNAL_NTP_TIMESTAMP],
+            0, demux->ntp_timestamp1, demux->ntp_timestamp2, stream->pts);
       }                         //endmod
+
       break;
     }
     case PENDING_PACKET_BUFFER:
