@@ -1105,9 +1105,7 @@ GstCaps *
 gst_vaapi_build_caps_from_formats (GArray * formats, gint min_width,
     gint min_height, gint max_width, gint max_height, guint mem_types)
 {
-  GstCaps *out_caps, *raw_caps, *va_caps, *dma_caps;
-
-  dma_caps = NULL;
+  GstCaps *out_caps, *raw_caps, *va_caps;
 
   raw_caps = gst_vaapi_video_format_new_template_caps_from_list (formats);
   if (!raw_caps)
@@ -1124,19 +1122,34 @@ gst_vaapi_build_caps_from_formats (GArray * formats, gint min_width,
           GST_VAAPI_BUFFER_MEMORY_TYPE_DMA_BUF) ||
       gst_vaapi_mem_type_supports (mem_types,
           GST_VAAPI_BUFFER_MEMORY_TYPE_DMA_BUF2)) {
-    dma_caps = gst_caps_copy (raw_caps);
-    gst_caps_set_features_simple (dma_caps,
-        gst_caps_features_new_static_str (GST_CAPS_FEATURE_MEMORY_DMABUF,
-            NULL));
+    GST_INFO ("Ignoring DMABuf caps");
   }
 
   out_caps = va_caps;
-  if (dma_caps)
-    gst_caps_append (out_caps, dma_caps);
   gst_caps_append (out_caps, raw_caps);
 
   return out_caps;
 }
+
+/* these are the commonly used formats in VA for chromas, by i965, iHD and
+ * gallium. We could query the VA config object, but for that there's GstVA
+ * plugin. */
+/* *INDENT-OFF* */
+const static struct {
+  GstVaapiChromaType chroma;
+  GstVideoFormat format;
+} ChromaFormatMap[] = {
+  { GST_VAAPI_CHROMA_TYPE_YUV420, GST_VIDEO_FORMAT_NV12 },
+  { GST_VAAPI_CHROMA_TYPE_YUV422, GST_VIDEO_FORMAT_YUY2 },
+  { GST_VAAPI_CHROMA_TYPE_YUV444, GST_VIDEO_FORMAT_VUYA },
+  { GST_VAAPI_CHROMA_TYPE_YUV420_10BPP, GST_VIDEO_FORMAT_P010_10LE },
+  { GST_VAAPI_CHROMA_TYPE_YUV422_10BPP, GST_VIDEO_FORMAT_Y210 },
+  { GST_VAAPI_CHROMA_TYPE_YUV444_10BPP, GST_VIDEO_FORMAT_Y410 },
+  { GST_VAAPI_CHROMA_TYPE_YUV420_12BPP, GST_VIDEO_FORMAT_P012_LE },
+  { GST_VAAPI_CHROMA_TYPE_YUV422_12BPP, GST_VIDEO_FORMAT_Y212_LE },
+  { GST_VAAPI_CHROMA_TYPE_YUV444_12BPP, GST_VIDEO_FORMAT_Y412_LE }
+};
+/* *INDENT-ON* */
 
 /**
  * gst_vaapi_build_template_raw_caps_by_codec:
@@ -1202,23 +1215,25 @@ gst_vaapi_build_template_raw_caps_by_codec (GstVaapiDisplay * display,
 
   for (gst_chroma = GST_VAAPI_CHROMA_TYPE_YUV420;
       gst_chroma <= GST_VAAPI_CHROMA_TYPE_YUV444_12BPP; gst_chroma++) {
-    GArray *fmts;
+    GstVideoFormat fmt;
     if (!(chroma & from_GstVaapiChromaType (gst_chroma)))
       continue;
 
-    fmts = gst_vaapi_video_format_get_formats_by_chroma (gst_chroma);
-    if (!fmts)
+    fmt = GST_VIDEO_FORMAT_UNKNOWN;
+    for (i = 0; i < G_N_ELEMENTS (ChromaFormatMap); i++) {
+      if (gst_chroma == ChromaFormatMap[i].chroma) {
+        fmt = ChromaFormatMap[i].format;
+        break;
+      }
+    }
+    if (fmt == GST_VIDEO_FORMAT_UNKNOWN)
       continue;
 
     /* One format can not belong to different chroma, no need to merge */
-    if (supported_fmts == NULL) {
-      supported_fmts = fmts;
-    } else {
-      for (i = 0; i < fmts->len; i++)
-        g_array_append_val (supported_fmts,
-            g_array_index (fmts, GstVideoFormat, i));
-      g_array_unref (fmts);
-    }
+    if (supported_fmts == NULL)
+      supported_fmts = g_array_new (FALSE, FALSE, sizeof (GstVideoFormat));
+
+    g_array_append_val (supported_fmts, fmt);
   }
 
   if (!supported_fmts)

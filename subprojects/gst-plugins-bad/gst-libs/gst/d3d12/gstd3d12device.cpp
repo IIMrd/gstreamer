@@ -774,20 +774,6 @@ gst_d3d12_device_get_property (GObject * object, guint prop_id,
 }
 
 static void
-make_buffer_format (GstVideoFormat format, GstD3D12Format * d3d12_format)
-{
-  d3d12_format->format = format;
-  d3d12_format->dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-  d3d12_format->dxgi_format = DXGI_FORMAT_UNKNOWN;
-  d3d12_format->support1 = D3D12_FORMAT_SUPPORT1_NONE;
-  d3d12_format->support2 = D3D12_FORMAT_SUPPORT2_NONE;
-  for (guint i = 0; i < GST_VIDEO_MAX_PLANES; i++) {
-    d3d12_format->resource_format[i] = DXGI_FORMAT_UNKNOWN;
-    d3d12_format->uav_format[i] = DXGI_FORMAT_UNKNOWN;
-  }
-}
-
-static void
 gst_d3d12_device_setup_format_table (GstD3D12Device * self)
 {
   auto priv = self->priv->inner;
@@ -2206,7 +2192,7 @@ gst_d3d12_device_get_sampler_state (GstD3D12Device * device,
   } else {
     ComPtr < ID3D12DescriptorHeap > new_heap;
     D3D12_DESCRIPTOR_HEAP_DESC heap_desc = { };
-    heap_desc.NumDescriptors = 1;
+    heap_desc.NumDescriptors = 2;
     heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
     heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
@@ -2228,7 +2214,15 @@ gst_d3d12_device_get_sampler_state (GstD3D12Device * device,
     sampler_desc.MinLOD = 0;
     sampler_desc.MaxLOD = D3D12_FLOAT32_MAX;
 
-    auto cpu_handle = GetCPUDescriptorHandleForHeapStart (new_heap);
+    auto cpu_handle = CD3DX12_CPU_DESCRIPTOR_HANDLE
+        (GetCPUDescriptorHandleForHeapStart (new_heap));
+    priv->device->CreateSampler (&sampler_desc, cpu_handle);
+
+    sampler_desc.MaxAnisotropy = 1;
+    sampler_desc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    auto inc_size = priv->device->GetDescriptorHandleIncrementSize
+        (D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+    cpu_handle.Offset (inc_size);
     priv->device->CreateSampler (&sampler_desc, cpu_handle);
 
     priv->samplers[filter] = new_heap;

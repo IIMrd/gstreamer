@@ -5132,12 +5132,12 @@
                 "long-name": "Deinterlacer",
                 "pad-templates": {
                     "sink": {
-                        "caps": "video/x-raw:\n         format: { AYUV, ARGB, ABGR, RGBA, BGRA, Y444, xRGB, xBGR, RGBx, BGRx, RGB, BGR, YUY2, YVYU, UYVY, Y42B, I420, YV12, Y41B, NV12, NV21, Y444_16LE, Y444_12LE, Y444_10LE, I422_12LE, I422_10LE, I420_12LE, I420_10LE }\n          width: [ 1, 2147483647 ]\n         height: [ 1, 2147483647 ]\n      framerate: [ 0/1, 2147483647/1 ]\n\nvideo/x-raw(ANY):\n         format: { DMA_DRM, A444_16LE, A444_16BE, Y416_LE, AYUV64, RGBA64_LE, ARGB64, ARGB64_LE, BGRA64_LE, ABGR64_LE, Y416_BE, RGBA64_BE, ARGB64_BE, BGRA64_BE, ABGR64_BE, A422_16LE, A422_16BE, A420_16LE, A420_16BE, A444_12LE, GBRA_12LE, A444_12BE, GBRA_12BE, Y412_LE, Y412_BE, A422_12LE, A422_12BE, A420_12LE, A420_12BE, A444_10LE, GBRA_10LE, A444_10BE, GBRA_10BE, A422_10LE, A422_10BE, A420_10LE, A420_10BE, BGR10A2_LE, RGB10A2_LE, Y410, A444, GBRA, AYUV, VUYA, RGBA, RBGA, ARGB, BGRA, ABGR, A422, A420, AV12, Y444_16LE, GBR_16LE, Y444_16BE, GBR_16BE, Y216_LE, Y216_BE, v216, P016_LE, P016_BE, Y444_12LE, GBR_12LE, Y444_12BE, GBR_12BE, I422_12LE, I422_12BE, Y212_LE, Y212_BE, I420_12LE, I420_12BE, P012_LE, P012_BE, Y444_10LE, GBR_10LE, Y444_10BE, GBR_10BE, r210, I422_10LE, I422_10BE, NV16_10LE32, Y210, UYVP, v210, I420_10LE, I420_10BE, P010_10LE, NV12_10LE40, NV12_10LE32, P010_10BE, MT2110R, MT2110T, NV12_10BE_8L128, NV12_10LE40_4L4, Y444, BGRP, GBR, RGBP, NV24, v308, IYU2, RGBx, xRGB, BGRx, xBGR, RGB, BGR, Y42B, NV16, NV61, YUY2, YVYU, UYVY, VYUY, I420, YV12, NV12, NV21, NV12_16L32S, NV12_32L32, NV12_4L4, NV12_64Z32, NV12_8L128, Y41B, IYU1, YUV9, YVU9, BGR16, RGB16, BGR15, RGB15, RGB8P, GRAY16_LE, GRAY16_BE, GRAY10_LE32, GRAY8 }\n          width: [ 1, 2147483647 ]\n         height: [ 1, 2147483647 ]\n      framerate: [ 0/1, 2147483647/1 ]\n",
+                        "caps": "video/x-raw:\n         format: { AYUV, ARGB, ABGR, RGBA, BGRA, Y444, xRGB, xBGR, RGBx, BGRx, RGB, BGR, YUY2, YVYU, UYVY, Y42B, I420, YV12, Y41B, NV12, NV21, Y444_16LE, Y444_12LE, Y444_10LE, I422_12LE, I422_10LE, I420_12LE, I420_10LE }\n          width: [ 1, 2147483647 ]\n         height: [ 1, 2147483647 ]\n      framerate: [ 0/1, 2147483647/1 ]\n\nvideo/x-raw(ANY):\n         format: { DMA_DRM, A444_16LE, A444_16BE, Y416_LE, AYUV64, RGBA64_LE, ARGB64, ARGB64_LE, BGRA64_LE, ABGR64_LE, Y416_BE, RGBA64_BE, ARGB64_BE, BGRA64_BE, ABGR64_BE, A422_16LE, A422_16BE, A420_16LE, A420_16BE, A444_12LE, GBRA_12LE, A444_12BE, GBRA_12BE, Y412_LE, Y412_BE, A422_12LE, A422_12BE, A420_12LE, A420_12BE, A444_10LE, GBRA_10LE, A444_10BE, GBRA_10BE, A422_10LE, A422_10BE, A420_10LE, A420_10BE, BGR10A2_LE, RGB10A2_LE, Y410, A444, GBRA, AYUV, VUYA, RGBA, RBGA, ARGB, BGRA, ABGR, A422, A420, AV12, Y444_16LE, GBR_16LE, Y444_16BE, GBR_16BE, Y216_LE, Y216_BE, v216, P016_LE, P016_BE, Y444_12LE, GBR_12LE, Y444_12BE, GBR_12BE, I422_12LE, I422_12BE, Y212_LE, Y212_BE, I420_12LE, I420_12BE, P012_LE, P012_BE, Y444_10LE, GBR_10LE, Y444_10BE, GBR_10BE, r210, I422_10LE, I422_10BE, NV16_10LE32, Y210, UYVP, v210, I420_10LE, I420_10BE, P010_10LE, NV12_10LE40, NV12_10LE32, P010_10BE, MT2110R, MT2110T, NV12_10BE_8L128, NV12_10LE40_4L4, Y444, BGRP, GBR, RGBP, NV24, v308, IYU2, RGBx, xRGB, BGRx, xBGR, RGB, BGR, Y42B, NV16, NV61, YUY2, YVYU, UYVY, VYUY, I420, YV12, NV12, NV21, NV12_16L32S, NV12_32L32, NV12_4L4, NV12_64Z32, NV12_8L128, Y41B, IYU1, YUV9, YVU9, BGR16, RGB16, BGR15, RGB15, RGB8P, GRAY16_LE, GRAY16_BE, GRAY10_LE16, GRAY10_LE32, GRAY8 }\n          width: [ 1, 2147483647 ]\n         height: [ 1, 2147483647 ]\n      framerate: [ 0/1, 2147483647/1 ]\n",
                         "direction": "sink",
                         "presence": "always"
                     },
                     "src": {
-                        "caps": "video/x-raw:\n         format: { AYUV, ARGB, ABGR, RGBA, BGRA, Y444, xRGB, xBGR, RGBx, BGRx, RGB, BGR, YUY2, YVYU, UYVY, Y42B, I420, YV12, Y41B, NV12, NV21, Y444_16LE, Y444_12LE, Y444_10LE, I422_12LE, I422_10LE, I420_12LE, I420_10LE }\n          width: [ 1, 2147483647 ]\n         height: [ 1, 2147483647 ]\n      framerate: [ 0/1, 2147483647/1 ]\n\nvideo/x-raw(ANY):\n         format: { DMA_DRM, A444_16LE, A444_16BE, Y416_LE, AYUV64, RGBA64_LE, ARGB64, ARGB64_LE, BGRA64_LE, ABGR64_LE, Y416_BE, RGBA64_BE, ARGB64_BE, BGRA64_BE, ABGR64_BE, A422_16LE, A422_16BE, A420_16LE, A420_16BE, A444_12LE, GBRA_12LE, A444_12BE, GBRA_12BE, Y412_LE, Y412_BE, A422_12LE, A422_12BE, A420_12LE, A420_12BE, A444_10LE, GBRA_10LE, A444_10BE, GBRA_10BE, A422_10LE, A422_10BE, A420_10LE, A420_10BE, BGR10A2_LE, RGB10A2_LE, Y410, A444, GBRA, AYUV, VUYA, RGBA, RBGA, ARGB, BGRA, ABGR, A422, A420, AV12, Y444_16LE, GBR_16LE, Y444_16BE, GBR_16BE, Y216_LE, Y216_BE, v216, P016_LE, P016_BE, Y444_12LE, GBR_12LE, Y444_12BE, GBR_12BE, I422_12LE, I422_12BE, Y212_LE, Y212_BE, I420_12LE, I420_12BE, P012_LE, P012_BE, Y444_10LE, GBR_10LE, Y444_10BE, GBR_10BE, r210, I422_10LE, I422_10BE, NV16_10LE32, Y210, UYVP, v210, I420_10LE, I420_10BE, P010_10LE, NV12_10LE40, NV12_10LE32, P010_10BE, MT2110R, MT2110T, NV12_10BE_8L128, NV12_10LE40_4L4, Y444, BGRP, GBR, RGBP, NV24, v308, IYU2, RGBx, xRGB, BGRx, xBGR, RGB, BGR, Y42B, NV16, NV61, YUY2, YVYU, UYVY, VYUY, I420, YV12, NV12, NV21, NV12_16L32S, NV12_32L32, NV12_4L4, NV12_64Z32, NV12_8L128, Y41B, IYU1, YUV9, YVU9, BGR16, RGB16, BGR15, RGB15, RGB8P, GRAY16_LE, GRAY16_BE, GRAY10_LE32, GRAY8 }\n          width: [ 1, 2147483647 ]\n         height: [ 1, 2147483647 ]\n      framerate: [ 0/1, 2147483647/1 ]\n",
+                        "caps": "video/x-raw:\n         format: { AYUV, ARGB, ABGR, RGBA, BGRA, Y444, xRGB, xBGR, RGBx, BGRx, RGB, BGR, YUY2, YVYU, UYVY, Y42B, I420, YV12, Y41B, NV12, NV21, Y444_16LE, Y444_12LE, Y444_10LE, I422_12LE, I422_10LE, I420_12LE, I420_10LE }\n          width: [ 1, 2147483647 ]\n         height: [ 1, 2147483647 ]\n      framerate: [ 0/1, 2147483647/1 ]\n\nvideo/x-raw(ANY):\n         format: { DMA_DRM, A444_16LE, A444_16BE, Y416_LE, AYUV64, RGBA64_LE, ARGB64, ARGB64_LE, BGRA64_LE, ABGR64_LE, Y416_BE, RGBA64_BE, ARGB64_BE, BGRA64_BE, ABGR64_BE, A422_16LE, A422_16BE, A420_16LE, A420_16BE, A444_12LE, GBRA_12LE, A444_12BE, GBRA_12BE, Y412_LE, Y412_BE, A422_12LE, A422_12BE, A420_12LE, A420_12BE, A444_10LE, GBRA_10LE, A444_10BE, GBRA_10BE, A422_10LE, A422_10BE, A420_10LE, A420_10BE, BGR10A2_LE, RGB10A2_LE, Y410, A444, GBRA, AYUV, VUYA, RGBA, RBGA, ARGB, BGRA, ABGR, A422, A420, AV12, Y444_16LE, GBR_16LE, Y444_16BE, GBR_16BE, Y216_LE, Y216_BE, v216, P016_LE, P016_BE, Y444_12LE, GBR_12LE, Y444_12BE, GBR_12BE, I422_12LE, I422_12BE, Y212_LE, Y212_BE, I420_12LE, I420_12BE, P012_LE, P012_BE, Y444_10LE, GBR_10LE, Y444_10BE, GBR_10BE, r210, I422_10LE, I422_10BE, NV16_10LE32, Y210, UYVP, v210, I420_10LE, I420_10BE, P010_10LE, NV12_10LE40, NV12_10LE32, P010_10BE, MT2110R, MT2110T, NV12_10BE_8L128, NV12_10LE40_4L4, Y444, BGRP, GBR, RGBP, NV24, v308, IYU2, RGBx, xRGB, BGRx, xBGR, RGB, BGR, Y42B, NV16, NV61, YUY2, YVYU, UYVY, VYUY, I420, YV12, NV12, NV21, NV12_16L32S, NV12_32L32, NV12_4L4, NV12_64Z32, NV12_8L128, Y41B, IYU1, YUV9, YVU9, BGR16, RGB16, BGR15, RGB15, RGB8P, GRAY16_LE, GRAY16_BE, GRAY10_LE16, GRAY10_LE32, GRAY8 }\n          width: [ 1, 2147483647 ]\n         height: [ 1, 2147483647 ]\n      framerate: [ 0/1, 2147483647/1 ]\n",
                         "direction": "src",
                         "presence": "always"
                     }
@@ -7456,12 +7456,12 @@
                 "long-name": "GdkPixbuf Overlay",
                 "pad-templates": {
                     "sink": {
-                        "caps": "video/x-raw:\n         format: { A444_16LE, A444_16BE, Y416_LE, AYUV64, RGBA64_LE, ARGB64, ARGB64_LE, BGRA64_LE, ABGR64_LE, Y416_BE, RGBA64_BE, ARGB64_BE, BGRA64_BE, ABGR64_BE, A422_16LE, A422_16BE, A420_16LE, A420_16BE, A444_12LE, GBRA_12LE, A444_12BE, GBRA_12BE, Y412_LE, Y412_BE, A422_12LE, A422_12BE, A420_12LE, A420_12BE, A444_10LE, GBRA_10LE, A444_10BE, GBRA_10BE, A422_10LE, A422_10BE, A420_10LE, A420_10BE, BGR10A2_LE, RGB10A2_LE, Y410, A444, GBRA, AYUV, VUYA, RGBA, RBGA, ARGB, BGRA, ABGR, A422, A420, AV12, Y444_16LE, GBR_16LE, Y444_16BE, GBR_16BE, Y216_LE, Y216_BE, v216, P016_LE, P016_BE, Y444_12LE, GBR_12LE, Y444_12BE, GBR_12BE, I422_12LE, I422_12BE, Y212_LE, Y212_BE, I420_12LE, I420_12BE, P012_LE, P012_BE, Y444_10LE, GBR_10LE, Y444_10BE, GBR_10BE, r210, I422_10LE, I422_10BE, NV16_10LE32, Y210, UYVP, v210, I420_10LE, I420_10BE, P010_10LE, NV12_10LE40, NV12_10LE32, P010_10BE, MT2110R, MT2110T, NV12_10BE_8L128, NV12_10LE40_4L4, Y444, BGRP, GBR, RGBP, NV24, v308, IYU2, RGBx, xRGB, BGRx, xBGR, RGB, BGR, Y42B, NV16, NV61, YUY2, YVYU, UYVY, VYUY, I420, YV12, NV12, NV21, NV12_16L32S, NV12_32L32, NV12_4L4, NV12_64Z32, NV12_8L128, Y41B, IYU1, YUV9, YVU9, BGR16, RGB16, BGR15, RGB15, RGB8P, GRAY16_LE, GRAY16_BE, GRAY10_LE32, GRAY8 }\n          width: [ 1, 2147483647 ]\n         height: [ 1, 2147483647 ]\n      framerate: [ 0/1, 2147483647/1 ]\n",
+                        "caps": "video/x-raw:\n         format: { A444_16LE, A444_16BE, Y416_LE, AYUV64, RGBA64_LE, ARGB64, ARGB64_LE, BGRA64_LE, ABGR64_LE, Y416_BE, RGBA64_BE, ARGB64_BE, BGRA64_BE, ABGR64_BE, A422_16LE, A422_16BE, A420_16LE, A420_16BE, A444_12LE, GBRA_12LE, A444_12BE, GBRA_12BE, Y412_LE, Y412_BE, A422_12LE, A422_12BE, A420_12LE, A420_12BE, A444_10LE, GBRA_10LE, A444_10BE, GBRA_10BE, A422_10LE, A422_10BE, A420_10LE, A420_10BE, BGR10A2_LE, RGB10A2_LE, Y410, A444, GBRA, AYUV, VUYA, RGBA, RBGA, ARGB, BGRA, ABGR, A422, A420, AV12, Y444_16LE, GBR_16LE, Y444_16BE, GBR_16BE, Y216_LE, Y216_BE, v216, P016_LE, P016_BE, Y444_12LE, GBR_12LE, Y444_12BE, GBR_12BE, I422_12LE, I422_12BE, Y212_LE, Y212_BE, I420_12LE, I420_12BE, P012_LE, P012_BE, Y444_10LE, GBR_10LE, Y444_10BE, GBR_10BE, r210, I422_10LE, I422_10BE, NV16_10LE32, Y210, UYVP, v210, I420_10LE, I420_10BE, P010_10LE, NV12_10LE40, NV12_10LE32, P010_10BE, MT2110R, MT2110T, NV12_10BE_8L128, NV12_10LE40_4L4, Y444, BGRP, GBR, RGBP, NV24, v308, IYU2, RGBx, xRGB, BGRx, xBGR, RGB, BGR, Y42B, NV16, NV61, YUY2, YVYU, UYVY, VYUY, I420, YV12, NV12, NV21, NV12_16L32S, NV12_32L32, NV12_4L4, NV12_64Z32, NV12_8L128, Y41B, IYU1, YUV9, YVU9, BGR16, RGB16, BGR15, RGB15, RGB8P, GRAY16_LE, GRAY16_BE, GRAY10_LE16, GRAY10_LE32, GRAY8 }\n          width: [ 1, 2147483647 ]\n         height: [ 1, 2147483647 ]\n      framerate: [ 0/1, 2147483647/1 ]\n",
                         "direction": "sink",
                         "presence": "always"
                     },
                     "src": {
-                        "caps": "video/x-raw:\n         format: { A444_16LE, A444_16BE, Y416_LE, AYUV64, RGBA64_LE, ARGB64, ARGB64_LE, BGRA64_LE, ABGR64_LE, Y416_BE, RGBA64_BE, ARGB64_BE, BGRA64_BE, ABGR64_BE, A422_16LE, A422_16BE, A420_16LE, A420_16BE, A444_12LE, GBRA_12LE, A444_12BE, GBRA_12BE, Y412_LE, Y412_BE, A422_12LE, A422_12BE, A420_12LE, A420_12BE, A444_10LE, GBRA_10LE, A444_10BE, GBRA_10BE, A422_10LE, A422_10BE, A420_10LE, A420_10BE, BGR10A2_LE, RGB10A2_LE, Y410, A444, GBRA, AYUV, VUYA, RGBA, RBGA, ARGB, BGRA, ABGR, A422, A420, AV12, Y444_16LE, GBR_16LE, Y444_16BE, GBR_16BE, Y216_LE, Y216_BE, v216, P016_LE, P016_BE, Y444_12LE, GBR_12LE, Y444_12BE, GBR_12BE, I422_12LE, I422_12BE, Y212_LE, Y212_BE, I420_12LE, I420_12BE, P012_LE, P012_BE, Y444_10LE, GBR_10LE, Y444_10BE, GBR_10BE, r210, I422_10LE, I422_10BE, NV16_10LE32, Y210, UYVP, v210, I420_10LE, I420_10BE, P010_10LE, NV12_10LE40, NV12_10LE32, P010_10BE, MT2110R, MT2110T, NV12_10BE_8L128, NV12_10LE40_4L4, Y444, BGRP, GBR, RGBP, NV24, v308, IYU2, RGBx, xRGB, BGRx, xBGR, RGB, BGR, Y42B, NV16, NV61, YUY2, YVYU, UYVY, VYUY, I420, YV12, NV12, NV21, NV12_16L32S, NV12_32L32, NV12_4L4, NV12_64Z32, NV12_8L128, Y41B, IYU1, YUV9, YVU9, BGR16, RGB16, BGR15, RGB15, RGB8P, GRAY16_LE, GRAY16_BE, GRAY10_LE32, GRAY8 }\n          width: [ 1, 2147483647 ]\n         height: [ 1, 2147483647 ]\n      framerate: [ 0/1, 2147483647/1 ]\n",
+                        "caps": "video/x-raw:\n         format: { A444_16LE, A444_16BE, Y416_LE, AYUV64, RGBA64_LE, ARGB64, ARGB64_LE, BGRA64_LE, ABGR64_LE, Y416_BE, RGBA64_BE, ARGB64_BE, BGRA64_BE, ABGR64_BE, A422_16LE, A422_16BE, A420_16LE, A420_16BE, A444_12LE, GBRA_12LE, A444_12BE, GBRA_12BE, Y412_LE, Y412_BE, A422_12LE, A422_12BE, A420_12LE, A420_12BE, A444_10LE, GBRA_10LE, A444_10BE, GBRA_10BE, A422_10LE, A422_10BE, A420_10LE, A420_10BE, BGR10A2_LE, RGB10A2_LE, Y410, A444, GBRA, AYUV, VUYA, RGBA, RBGA, ARGB, BGRA, ABGR, A422, A420, AV12, Y444_16LE, GBR_16LE, Y444_16BE, GBR_16BE, Y216_LE, Y216_BE, v216, P016_LE, P016_BE, Y444_12LE, GBR_12LE, Y444_12BE, GBR_12BE, I422_12LE, I422_12BE, Y212_LE, Y212_BE, I420_12LE, I420_12BE, P012_LE, P012_BE, Y444_10LE, GBR_10LE, Y444_10BE, GBR_10BE, r210, I422_10LE, I422_10BE, NV16_10LE32, Y210, UYVP, v210, I420_10LE, I420_10BE, P010_10LE, NV12_10LE40, NV12_10LE32, P010_10BE, MT2110R, MT2110T, NV12_10BE_8L128, NV12_10LE40_4L4, Y444, BGRP, GBR, RGBP, NV24, v308, IYU2, RGBx, xRGB, BGRx, xBGR, RGB, BGR, Y42B, NV16, NV61, YUY2, YVYU, UYVY, VYUY, I420, YV12, NV12, NV21, NV12_16L32S, NV12_32L32, NV12_4L4, NV12_64Z32, NV12_8L128, Y41B, IYU1, YUV9, YVU9, BGR16, RGB16, BGR15, RGB15, RGB8P, GRAY16_LE, GRAY16_BE, GRAY10_LE16, GRAY10_LE32, GRAY8 }\n          width: [ 1, 2147483647 ]\n         height: [ 1, 2147483647 ]\n      framerate: [ 0/1, 2147483647/1 ]\n",
                         "direction": "src",
                         "presence": "always"
                     }
@@ -12278,7 +12278,7 @@
                 "klass": "Sink/Video",
                 "pad-templates": {
                     "sink": {
-                        "caps": "video/x-raw(memory:GLMemory):\n         format: { RGBA, BGRA, RGB, YV12, NV12 }\n          width: [ 1, 2147483647 ]\n         height: [ 1, 2147483647 ]\n      framerate: [ 0/1, 2147483647/1 ]\n texture-target: 2D\n",
+                        "caps": "video/x-raw(memory:GLMemory):\n         format: { RGBA, BGRA, RGB, YV12, NV12 }\n          width: [ 1, 2147483647 ]\n         height: [ 1, 2147483647 ]\n      framerate: [ 0/1, 2147483647/1 ]\n texture-target: { (string)2D, (string)external-oes }\n",
                         "direction": "sink",
                         "presence": "always"
                     }
@@ -12449,6 +12449,18 @@
                         "readable": true,
                         "type": "GstGLContext",
                         "writable": false
+                    },
+                    "depth-buffer": {
+                        "blurb": "Use depth and stencil buffer for the rendering of the scene. Might corrupt the rendering when set to FALSE! Only set to FALSE after carefully checking the targeted QML scene.",
+                        "conditionally-available": false,
+                        "construct": false,
+                        "construct-only": false,
+                        "controllable": false,
+                        "default": "true",
+                        "mutable": "ready",
+                        "readable": true,
+                        "type": "gboolean",
+                        "writable": true
                     },
                     "qml-scene": {
                         "blurb": "The contents of the QML scene",
@@ -16378,7 +16390,7 @@
                         "construct": false,
                         "construct-only": false,
                         "controllable": false,
-                        "default": "application/x-rtp-payload-stats, clock-rate=(int)0, running-time=(guint64)0, seqnum=(uint)0, timestamp=(uint)0, ssrc=(uint)0, pt=(int)128, seqnum-offset=(uint)0, timestamp-offset=(uint)0;",
+                        "default": "application/x-rtp-payload-stats, clock-rate=(uint)0, running-time=(guint64)0, seqnum=(uint)0, timestamp=(uint)0, ssrc=(uint)0, pt=(uint)128, seqnum-offset=(uint)0, timestamp-offset=(uint)0;",
                         "mutable": "null",
                         "readable": true,
                         "type": "GstStructure",
@@ -21760,6 +21772,18 @@
                         "type": "GstRTSPSrcBufferMode",
                         "writable": true
                     },
+                    "client-managed-mikey": {
+                        "blurb": "Enable client-managed MIKEY mode",
+                        "conditionally-available": false,
+                        "construct": false,
+                        "construct-only": false,
+                        "controllable": false,
+                        "default": "false",
+                        "mutable": "null",
+                        "readable": true,
+                        "type": "gboolean",
+                        "writable": true
+                    },
                     "connection-speed": {
                         "blurb": "Network connection speed in kbps (0 = unknown)",
                         "conditionally-available": false,
@@ -22415,6 +22439,16 @@
                         ],
                         "return-type": "void"
                     },
+                    "hard-limit": {
+                        "args": [
+                            {
+                                "name": "arg0",
+                                "type": "guint"
+                            }
+                        ],
+                        "return-type": "void",
+                        "when": "last"
+                    },
                     "new-manager": {
                         "args": [
                             {
@@ -22464,6 +22498,17 @@
                         "return-type": "GstFlowReturn",
                         "when": "last"
                     },
+                    "remove-key": {
+                        "action": true,
+                        "args": [
+                            {
+                                "name": "arg0",
+                                "type": "guint"
+                            }
+                        ],
+                        "return-type": "gboolean",
+                        "when": "last"
+                    },
                     "request-rtcp-key": {
                         "args": [
                             {
@@ -22474,6 +22519,15 @@
                         "return-type": "GstCaps",
                         "when": "last"
                     },
+                    "request-rtp-key": {
+                        "args": [
+                            {
+                                "name": "arg0",
+                                "type": "guint"
+                            }
+                        ],
+                        "return-type": "GstCaps"
+                    },
                     "select-stream": {
                         "args": [
                             {
@@ -22483,6 +22537,25 @@
                             {
                                 "name": "arg1",
                                 "type": "GstCaps"
+                            }
+                        ],
+                        "return-type": "gboolean",
+                        "when": "last"
+                    },
+                    "set-mikey-parameter": {
+                        "action": true,
+                        "args": [
+                            {
+                                "name": "arg0",
+                                "type": "guint"
+                            },
+                            {
+                                "name": "arg1",
+                                "type": "GstCaps"
+                            },
+                            {
+                                "name": "arg2",
+                                "type": "GstPromise"
                             }
                         ],
                         "return-type": "gboolean",
@@ -22509,6 +22582,16 @@
                             }
                         ],
                         "return-type": "gboolean",
+                        "when": "last"
+                    },
+                    "soft-limit": {
+                        "args": [
+                            {
+                                "name": "arg0",
+                                "type": "guint"
+                            }
+                        ],
+                        "return-type": "void",
                         "when": "last"
                     }
                 }
@@ -25965,7 +26048,7 @@
                 "long-name": "Video (video4linux2) Sink",
                 "pad-templates": {
                     "sink": {
-                        "caps": "image/jpeg:\n         parsed: true\nvideo/mpeg:\n    mpegversion: 4\n   systemstream: false\nvideo/mpeg:\n    mpegversion: { (int)1, (int)2 }\nvideo/mpegts:\n   systemstream: true\nvideo/x-bayer:\n         format: { bggr, gbrgle, grbgle, rggble, bggr10le, gbrg10le, grbg10le, rggb10le, bggr12le, gbrg12le, grbg12le, rggb12le, bggr14le, gbrg14le, grbg14le, rggb14le, bggr16le, gbrg16le, grbg16le, rggb16le }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-dv:\n   systemstream: true\nvideo/x-fwht:\nvideo/x-h263:\n        variant: itu\nvideo/x-h264:\n  stream-format: { (string)byte-stream, (string)avc }\n      alignment: au\nvideo/x-h265:\n  stream-format: byte-stream\n      alignment: au\nvideo/x-pwc1:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-pwc2:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-raw:\n         format: { RGB15, RGB16, BGR, RGB, ABGR, xBGR, RGBA, RGBx, BGR15, GRAY8, GRAY16_LE, GRAY16_BE, YVU9, YUY2, YVYU, UYVY, Y41B, YUV9, NV12_64Z32, NV12_8L128, NV12_10BE_8L128, NV24, NV12_16L32S, NV61, NV16, NV21, NV12, I420, Y42B, YV12, ARGB, xRGB, BGRA, BGRx }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-sonix:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-vp8:\nvideo/x-vp9:\nvideo/x-wmv:\n     wmvversion: 3\n         format: WVC1\n\nvideo/x-raw(format:Interlaced):\n         format: { RGB15, RGB16, BGR, RGB, ABGR, xBGR, RGBA, RGBx, BGR15, GRAY8, GRAY16_LE, GRAY16_BE, YVU9, YUY2, YVYU, UYVY, Y41B, YUV9, NV12_64Z32, NV12_8L128, NV12_10BE_8L128, NV24, NV12_16L32S, NV61, NV16, NV21, NV12, I420, Y42B, YV12, ARGB, xRGB, BGRA, BGRx }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\n interlace-mode: alternate\n",
+                        "caps": "image/jpeg:\n         parsed: true\nvideo/mpeg:\n    mpegversion: 4\n   systemstream: false\nvideo/mpeg:\n    mpegversion: { (int)1, (int)2 }\nvideo/mpegts:\n   systemstream: true\nvideo/x-bayer:\n         format: { bggr, gbrg, grbg, rggb, bggr10le, gbrg10le, grbg10le, rggb10le, bggr12le, gbrg12le, grbg12le, rggb12le, bggr14le, gbrg14le, grbg14le, rggb14le, bggr16le, gbrg16le, grbg16le, rggb16le }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-dv:\n   systemstream: true\nvideo/x-fwht:\nvideo/x-h263:\n        variant: itu\nvideo/x-h264:\n  stream-format: { (string)byte-stream, (string)avc }\n      alignment: au\nvideo/x-h265:\n  stream-format: byte-stream\n      alignment: au\nvideo/x-pwc1:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-pwc2:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-raw:\n         format: { RGB15, RGB16, BGR, RGB, ABGR, xBGR, RGBA, RGBx, BGR15, GRAY8, GRAY16_LE, GRAY16_BE, YVU9, YUY2, YVYU, UYVY, Y41B, YUV9, NV12_64Z32, NV12_8L128, NV12_10BE_8L128, NV24, NV12_16L32S, NV61, NV16, NV21, NV12, I420, Y42B, YV12, ARGB, xRGB, BGRA, BGRx }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-sonix:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-vp8:\nvideo/x-vp9:\nvideo/x-wmv:\n     wmvversion: 3\n         format: WVC1\n\nvideo/x-raw(format:Interlaced):\n         format: { RGB15, RGB16, BGR, RGB, ABGR, xBGR, RGBA, RGBx, BGR15, GRAY8, GRAY16_LE, GRAY16_BE, YVU9, YUY2, YVYU, UYVY, Y41B, YUV9, NV12_64Z32, NV12_8L128, NV12_10BE_8L128, NV24, NV12_16L32S, NV61, NV16, NV21, NV12, I420, Y42B, YV12, ARGB, xRGB, BGRA, BGRx }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\n interlace-mode: alternate\n",
                         "direction": "sink",
                         "presence": "always"
                     }
@@ -26273,7 +26356,7 @@
                 "long-name": "Video (video4linux2) Source",
                 "pad-templates": {
                     "src": {
-                        "caps": "image/jpeg:\n         parsed: true\nvideo/mpeg:\n    mpegversion: 4\n   systemstream: false\nvideo/mpeg:\n    mpegversion: { (int)1, (int)2 }\nvideo/mpegts:\n   systemstream: true\nvideo/x-bayer:\n         format: { bggr, gbrgle, grbgle, rggble, bggr10le, gbrg10le, grbg10le, rggb10le, bggr12le, gbrg12le, grbg12le, rggb12le, bggr14le, gbrg14le, grbg14le, rggb14le, bggr16le, gbrg16le, grbg16le, rggb16le }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-dv:\n   systemstream: true\nvideo/x-fwht:\nvideo/x-h263:\n        variant: itu\nvideo/x-h264:\n  stream-format: { (string)byte-stream, (string)avc }\n      alignment: au\nvideo/x-h265:\n  stream-format: byte-stream\n      alignment: au\nvideo/x-pwc1:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-pwc2:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-raw:\n         format: { RGB15, RGB16, BGR, RGB, ABGR, xBGR, RGBA, RGBx, BGR15, GRAY8, GRAY16_LE, GRAY16_BE, YVU9, YUY2, YVYU, UYVY, Y41B, YUV9, NV12_64Z32, NV12_8L128, NV12_10BE_8L128, NV24, NV12_16L32S, NV61, NV16, NV21, NV12, I420, Y42B, YV12, ARGB, xRGB, BGRA, BGRx }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-sonix:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-vp8:\nvideo/x-vp9:\nvideo/x-wmv:\n     wmvversion: 3\n         format: WVC1\n\nvideo/x-raw(format:Interlaced):\n         format: { RGB15, RGB16, BGR, RGB, ABGR, xBGR, RGBA, RGBx, BGR15, GRAY8, GRAY16_LE, GRAY16_BE, YVU9, YUY2, YVYU, UYVY, Y41B, YUV9, NV12_64Z32, NV12_8L128, NV12_10BE_8L128, NV24, NV12_16L32S, NV61, NV16, NV21, NV12, I420, Y42B, YV12, ARGB, xRGB, BGRA, BGRx }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\n interlace-mode: alternate\n",
+                        "caps": "image/jpeg:\n         parsed: true\nvideo/mpeg:\n    mpegversion: 4\n   systemstream: false\nvideo/mpeg:\n    mpegversion: { (int)1, (int)2 }\nvideo/mpegts:\n   systemstream: true\nvideo/x-bayer:\n         format: { bggr, gbrg, grbg, rggb, bggr10le, gbrg10le, grbg10le, rggb10le, bggr12le, gbrg12le, grbg12le, rggb12le, bggr14le, gbrg14le, grbg14le, rggb14le, bggr16le, gbrg16le, grbg16le, rggb16le }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-dv:\n   systemstream: true\nvideo/x-fwht:\nvideo/x-h263:\n        variant: itu\nvideo/x-h264:\n  stream-format: { (string)byte-stream, (string)avc }\n      alignment: au\nvideo/x-h265:\n  stream-format: byte-stream\n      alignment: au\nvideo/x-pwc1:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-pwc2:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-raw:\n         format: { RGB15, RGB16, BGR, RGB, ABGR, xBGR, RGBA, RGBx, BGR15, GRAY8, GRAY16_LE, GRAY16_BE, YVU9, YUY2, YVYU, UYVY, Y41B, YUV9, NV12_64Z32, NV12_8L128, NV12_10BE_8L128, NV24, NV12_16L32S, NV61, NV16, NV21, NV12, I420, Y42B, YV12, ARGB, xRGB, BGRA, BGRx }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-sonix:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-vp8:\nvideo/x-vp9:\nvideo/x-wmv:\n     wmvversion: 3\n         format: WVC1\n\nvideo/x-raw(format:Interlaced):\n         format: { RGB15, RGB16, BGR, RGB, ABGR, xBGR, RGBA, RGBx, BGR15, GRAY8, GRAY16_LE, GRAY16_BE, YVU9, YUY2, YVYU, UYVY, Y41B, YUV9, NV12_64Z32, NV12_8L128, NV12_10BE_8L128, NV24, NV12_16L32S, NV61, NV16, NV21, NV12, I420, Y42B, YV12, ARGB, xRGB, BGRA, BGRx }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\n interlace-mode: alternate\n",
                         "direction": "src",
                         "presence": "always"
                     }

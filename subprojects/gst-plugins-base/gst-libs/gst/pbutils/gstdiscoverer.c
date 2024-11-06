@@ -192,7 +192,7 @@ static void gst_discoverer_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec);
 static gboolean _setup_locked (GstDiscoverer * dc);
 static void handle_current_async (GstDiscoverer * dc);
-static gboolean emit_discovererd_and_next (GstDiscoverer * dc);
+static gboolean emit_discovered_and_next (GstDiscoverer * dc);
 static GVariant *gst_discoverer_info_to_variant_recurse (GstDiscovererStreamInfo
     * sinfo, GstDiscovererSerializeFlags flags);
 static GstDiscovererStreamInfo *_parse_discovery (GVariant * variant,
@@ -1344,7 +1344,7 @@ setup_next_uri_locked (GstDiscoverer * dc)
         handle_current_async (dc);
     } else {
       g_idle_add_full (G_PRIORITY_DEFAULT_IDLE,
-          (GSourceFunc) emit_discovererd_and_next, gst_object_ref (dc),
+          (GSourceFunc) emit_discovered_and_next, gst_object_ref (dc),
           gst_object_unref);
     }
   } else {
@@ -1354,7 +1354,7 @@ setup_next_uri_locked (GstDiscoverer * dc)
   }
 }
 
-static GstDiscovererInfo *
+static void
 _ensure_info_tags (GstDiscoverer * dc)
 {
   GstDiscovererInfo *info = dc->priv->current_info;
@@ -1362,25 +1362,40 @@ _ensure_info_tags (GstDiscoverer * dc)
   if (dc->priv->all_tags)
     info->tags = dc->priv->all_tags;
   dc->priv->all_tags = NULL;
-  return info;
 }
 
 static void
-emit_discovererd (GstDiscoverer * dc)
+serialize_info_if_required (GstDiscoverer * dc, GstDiscovererInfo * info)
 {
-  GstDiscovererInfo *info = _ensure_info_tags (dc);
-  GST_DEBUG_OBJECT (dc, "Emitting 'discoverered' %s", info->uri);
+
+  if (dc->priv->use_cache && info->cachefile
+      && info->result == GST_DISCOVERER_OK) {
+    GVariant *variant = gst_discoverer_info_to_variant (info,
+        GST_DISCOVERER_SERIALIZE_ALL);
+
+    g_file_set_contents (info->cachefile,
+        g_variant_get_data (variant), g_variant_get_size (variant), NULL);
+    g_variant_unref (variant);
+  }
+}
+
+static void
+emit_discovered (GstDiscoverer * dc)
+{
+  GstDiscovererInfo *info = dc->priv->current_info;
+  GST_DEBUG_OBJECT (dc, "Emitting 'discovered' %s", info->uri);
   g_signal_emit (dc, gst_discoverer_signals[SIGNAL_DISCOVERED], 0,
       info, dc->priv->current_error);
+
   /* Clients get a copy of current_info since it is a boxed type */
   gst_discoverer_info_unref (dc->priv->current_info);
   dc->priv->current_info = NULL;
 }
 
 static gboolean
-emit_discovererd_and_next (GstDiscoverer * dc)
+emit_discovered_and_next (GstDiscoverer * dc)
 {
-  emit_discovererd (dc);
+  emit_discovered (dc);
 
   DISCO_LOCK (dc);
   setup_next_uri_locked (dc);
@@ -1503,18 +1518,10 @@ discoverer_collect (GstDiscoverer * dc)
     }
   }
 
-  if (dc->priv->use_cache && dc->priv->current_info->cachefile &&
-      dc->priv->current_info->result == GST_DISCOVERER_OK) {
-    GVariant *variant = gst_discoverer_info_to_variant (dc->priv->current_info,
-        GST_DISCOVERER_SERIALIZE_ALL);
-
-    g_file_set_contents (dc->priv->current_info->cachefile,
-        g_variant_get_data (variant), g_variant_get_size (variant), NULL);
-    g_variant_unref (variant);
-  }
-
+  _ensure_info_tags (dc);
+  serialize_info_if_required (dc, dc->priv->current_info);
   if (dc->priv->async)
-    emit_discovererd (dc);
+    emit_discovered (dc);
 }
 
 static void
@@ -1845,7 +1852,7 @@ _get_info_from_cachefile (GstDiscoverer * dc, gchar * cachefile)
       g_free (cachefile);
     }
 
-    GST_INFO_OBJECT (dc, "Got info from cache: %p", info);
+    GST_INFO_OBJECT (dc, "Got info from cache: %p %s", info, info->cachefile);
     g_free (data);
 
     return info;
@@ -2066,7 +2073,7 @@ start_discovering (GstDiscoverer * dc)
 
       source = g_idle_source_new ();
       g_source_set_callback (source,
-          (GSourceFunc) emit_discovererd_and_next, gst_object_ref (dc),
+          (GSourceFunc) emit_discovered_and_next, gst_object_ref (dc),
           gst_object_unref);
       g_source_attach (source, dc->priv->ctx);
       goto beach;
@@ -2635,8 +2642,8 @@ gst_discoverer_discover_uri (GstDiscoverer * discoverer, const gchar * uri,
         discoverer->priv->current_info->result);
     discoverer->priv->current_info->result = res;
   }
-  info = _ensure_info_tags (discoverer);
 
+  info = discoverer->priv->current_info;
   discoverer_cleanup (discoverer);
 
   return info;

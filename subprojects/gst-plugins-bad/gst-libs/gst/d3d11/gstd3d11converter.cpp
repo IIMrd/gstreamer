@@ -155,6 +155,7 @@ struct PSAlphaFactor
 {
   FLOAT alpha;
   FLOAT padding[3];
+  FLOAT padding_other[4];
 };
 
 struct PSConstBuffer
@@ -2367,7 +2368,7 @@ gst_d3d11_converter_convert_internal (GstD3D11Converter * self,
     }
 
     alpha_buffer = (PSAlphaFactor *) map.pData;
-    memcpy (alpha_buffer, &priv->alpha_data, sizeof (PSConstBuffer));
+    memcpy (alpha_buffer, &priv->alpha_data, sizeof (PSAlphaFactor));
 
     context->Unmap (priv->alpha_buffer.Get (), 0);
   }

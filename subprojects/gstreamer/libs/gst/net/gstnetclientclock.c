@@ -147,7 +147,6 @@ struct _GstNetClientInternalClock
   GstClockTime minimum_update_interval;
   GstClockTime last_remote_poll_interval;
   GstClockTime last_remote_time;
-  GstClockTime remote_avg_old;
   guint skipped_updates;
   GstClockTime last_rtts[MEDIAN_PRE_FILTERING_WINDOW];
   gint last_rtts_missing;
@@ -235,7 +234,6 @@ gst_net_client_internal_clock_init (GstNetClientInternalClock * self)
   self->skipped_updates = 0;
   self->last_rtts_missing = MEDIAN_PRE_FILTERING_WINDOW;
   self->marked_corrupted = FALSE;
-  self->remote_avg_old = 0;
 }
 
 static void
@@ -531,20 +529,6 @@ gst_net_client_internal_clock_observe_times (GstNetClientInternalClock * self,
       && GST_CLOCK_DIFF (time_before,
           remote_avg) < (GstClockTimeDiff) (max_discont));
 
-  /* Check if new remote_avg is less than before to detect if signal lost
-   * sync due to the remote clock has restarted. Then the new remote time will
-   * be less than the previous time which should not happen if increased in a
-   * monotonic way. Also, only perform this check on a synchronized clock to
-   * avoid startup issues.
-   */
-  if (synched) {
-    if (remote_avg < self->remote_avg_old) {
-      gst_clock_set_synced (GST_CLOCK (self), FALSE);
-    } else {
-      self->remote_avg_old = remote_avg;
-    }
-  }
-
   if (gst_clock_add_observation_unapplied (GST_CLOCK_CAST (self),
           local_avg, remote_avg, &r_squared, &internal_time, &external_time,
           &rate_num, &rate_den)) {
@@ -666,6 +650,7 @@ corrupted:
     self->marked_corrupted = TRUE;
   }
   GST_OBJECT_UNLOCK (self);
+  gst_clock_set_synced (GST_CLOCK (self), FALSE);
   return;
 }
 

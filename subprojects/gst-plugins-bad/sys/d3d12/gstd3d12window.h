@@ -143,6 +143,13 @@ void             gst_d3d12_window_on_mouse_event (GstD3D12Window * window,
                                                   double ypos,
                                                   guint modifier);
 
+void             gst_d3d12_window_on_scroll_event (GstD3D12Window * window,
+                                                   gint delta_x,
+                                                   gint delta_y,
+                                                   double xpos,
+                                                   double ypos,
+                                                   guint modifier);
+
 void             gst_d3d12_window_get_create_params (GstD3D12Window * window,
                                                      std::wstring & title,
                                                      GstVideoRectangle * rect,
@@ -155,6 +162,30 @@ void             gst_d3d12_window_get_mouse_pos_info (GstD3D12Window * window,
                                                       int & input_width,
                                                       int & input_height,
                                                       GstVideoOrientationMethod & orientation);
+
+gboolean         gst_d3d12_window_set_hue (GstD3D12Window * window,
+                                           gboolean immediate,
+                                           gdouble value);
+
+gdouble          gst_d3d12_window_get_hue (GstD3D12Window * window);
+
+gboolean         gst_d3d12_window_set_saturation (GstD3D12Window * window,
+                                                  gboolean immediate,
+                                                  gdouble value);
+
+gdouble          gst_d3d12_window_get_saturation (GstD3D12Window * window);
+
+gboolean         gst_d3d12_window_set_brightness (GstD3D12Window * window,
+                                                  gboolean immediate,
+                                                  gdouble value);
+
+gdouble          gst_d3d12_window_get_brightness (GstD3D12Window * window);
+
+gboolean         gst_d3d12_window_set_contrast (GstD3D12Window * window,
+                                                gboolean immediate,
+                                                gdouble value);
+
+gdouble          gst_d3d12_window_get_contrast (GstD3D12Window * window);
 
 G_END_DECLS
 

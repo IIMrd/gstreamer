@@ -879,6 +879,25 @@ gst_aggregator_wait_and_check (GstAggregator * self, gboolean * timeout)
     return FALSE;
   }
 
+  if (self->priv->force_live && self->priv->first_buffer
+      && self->priv->start_time_selection ==
+      GST_AGGREGATOR_START_TIME_SELECTION_FIRST) {
+    GstClockTime start_time;
+    GstAggregatorPad *srcpad = GST_AGGREGATOR_PAD (self->srcpad);
+    start_time = gst_element_get_current_running_time (GST_ELEMENT (self));
+
+    if (GST_CLOCK_TIME_IS_VALID (start_time)) {
+      if (srcpad->segment.position == -1)
+        srcpad->segment.position = start_time;
+      else
+        srcpad->segment.position = MIN (start_time, srcpad->segment.position);
+
+      GST_DEBUG_OBJECT (self, "Selecting start time %" GST_TIME_FORMAT,
+          GST_TIME_ARGS (start_time));
+      self->priv->first_buffer = FALSE;
+    }
+  }
+
   start = gst_aggregator_get_next_time (self);
 
   /* If we're not live, or if we use the running time
@@ -2279,8 +2298,10 @@ gst_aggregator_request_new_pad (GstElement * element,
 static gboolean
 gst_aggregator_query_latency_unlocked (GstAggregator * self, GstQuery * query)
 {
-  gboolean query_ret, live;
+  gboolean query_ret, upstream_live;
   GstClockTime our_latency, min, max;
+
+  GST_TRACE_OBJECT (self, "querying latency");
 
   /* Temporarily release the lock to do the query. */
   SRC_UNLOCK (self);
@@ -2292,7 +2313,12 @@ gst_aggregator_query_latency_unlocked (GstAggregator * self, GstQuery * query)
     return FALSE;
   }
 
-  gst_query_parse_latency (query, &live, &min, &max);
+  gst_query_parse_latency (query, &upstream_live, &min, &max);
+
+  GST_LOG_OBJECT (self,
+      "queried upstream latency, live: %s min: %" GST_TIME_FORMAT " max: %"
+      GST_TIME_FORMAT, upstream_live ? "true" : "false", GST_TIME_ARGS (min),
+      GST_TIME_ARGS (max));
 
   if (G_UNLIKELY (!GST_CLOCK_TIME_IS_VALID (min))) {
     GST_ERROR_OBJECT (self, "Invalid minimum latency %" GST_TIME_FORMAT
@@ -2322,7 +2348,7 @@ gst_aggregator_query_latency_unlocked (GstAggregator * self, GstQuery * query)
 
   our_latency = self->priv->latency;
 
-  self->priv->peer_latency_live = live;
+  self->priv->peer_latency_live = upstream_live;
   self->priv->peer_latency_min = min;
   self->priv->peer_latency_max = max;
   self->priv->has_peer_latency = TRUE;
@@ -2339,9 +2365,10 @@ gst_aggregator_query_latency_unlocked (GstAggregator * self, GstQuery * query)
   SRC_BROADCAST (self);
 
   GST_DEBUG_OBJECT (self, "configured latency live:%s min:%" G_GINT64_FORMAT
-      " max:%" G_GINT64_FORMAT, live ? "true" : "false", min, max);
+      " max:%" G_GINT64_FORMAT,
+      is_live_unlocked (self) ? "true" : "false", min, max);
 
-  gst_query_set_latency (query, live, min, max);
+  gst_query_set_latency (query, is_live_unlocked (self), min, max);
 
   return query_ret;
 }

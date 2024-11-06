@@ -54,6 +54,10 @@ else
     '-Wno-redundant-decls',
     # include/directxmath/DirectXMathMatrix.inl:1161:16: error: variable 'aa' set but not used
     '-Wno-unused-but-set-variable',
+    # include/directx/d3dx12_pipeline_state_stream.h:28: error: ignoring '#pragma warning '
+    '-Wno-unknown-pragmas',
+    # Various warnings in DirectX-Headers headers
+    '-Wno-switch',
   ])
 endif
 
@@ -138,6 +142,13 @@ if cc.compiles('''
   }''',
   name: 'DXGI debug layer support in Windows SDK')
   extra_args += ['-DHAVE_DXGIDEBUG_H']
+endif
+
+if cc.get_argument_syntax() != 'msvc' and dx_headers_dep.type_name() != 'internal'
+  # Required for MinGW because it has old version RPC headers.
+  # DirectX-Headers subproject is doing this already,
+  # but not exposed via pkg-config. Define this for installed DirectX-Headers
+  extra_args += ['-D__REQUIRED_RPCNDR_H_VERSION__=475']
 endif
 
 pkg_name = 'gstreamer-d3d12-' + api_version

@@ -135,7 +135,7 @@ struct _GstVaapiEncoderMap
 
 #define DEF_ENC(CODEC,codec)          \
   {GST_VAAPI_CODEC_##CODEC,           \
-   GST_RANK_PRIMARY,                  \
+   GST_RANK_NONE,                     \
    "vaapi" G_STRINGIFY (codec) "enc", \
    gst_vaapiencode_##codec##_register_type}
 
@@ -193,6 +193,9 @@ plugin_init (GstPlugin * plugin)
     goto error_no_display;
   if (!gst_vaapi_driver_is_whitelisted (display))
     goto unsupported_driver;
+
+  gst_plugin_add_status_warning (plugin,
+      "GStreamer VA-API is deprecated in favor of GstVA in gst-plugins-bad");
 
   _gst_vaapi_has_video_processing =
       gst_vaapi_display_has_video_processing (display);

@@ -17,8 +17,19 @@ timeout="${TIMEOUT_FACTOR:="2"}"
 validate="${EXTRA_VALIDATE_ARGS:=""}"
 parent="${CI_PROJECT_DIR:-$(pwd)}"
 
-export XDG_RUNTIME_DIR="$(mktemp -p $(pwd) -d xdg-runtime-XXXXXX)"
+# Put the runtime dir inside CI_PROJECT_DIR or in /tmp if we are running locally
+export XDG_RUNTIME_DIR="$(mktemp -p "${CI_PROJECT_DIR:-/tmp}" -d xdg-runtime-XXXXXX)"
 echo "-> Running $tests"
+
+# Disable all cpu extensions post AVX to match what valgrind supports
+# https://github.com/openssl/openssl/blob/master/NOTES-VALGRIND.md
+export OPENSSL_ia32cap=":0"
+
+# Force Software rendering for GL and Vulkan so the tests run locally
+# like they would do in the CI.
+export LIBGL_ALWAYS_SOFTWARE="true"
+# This the hardcoded value for llvmpipe
+export MESA_VK_DEVICE_SELECT="10005:0"
 
 ./gst-env.py \
     "--builddir=$builddir" \

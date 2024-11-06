@@ -333,7 +333,8 @@ public:
     BMDFrameFlags flags = m_dframe ? m_dframe->GetFlags () : bmdFrameFlagDefault;
 
     if (have_mastering_info || have_light_level ||
-        colorimetry.transfer == GST_VIDEO_TRANSFER_ARIB_STD_B67) {
+        colorimetry.transfer == GST_VIDEO_TRANSFER_ARIB_STD_B67 ||
+        colorimetry.transfer == GST_VIDEO_TRANSFER_SMPTE2084) {
       flags |= bmdFrameContainsHDRMetadata;
     }
 
@@ -434,7 +435,7 @@ public:
           case GST_VIDEO_TRANSFER_BT601:
           case GST_VIDEO_TRANSFER_BT709:
           case GST_VIDEO_TRANSFER_BT2020_10:
-            if (have_mastering_info && have_mastering_info)
+            if (have_mastering_info && have_light_level)
               *value = 1;
             else
               *value = 0;
@@ -461,75 +462,87 @@ public:
       case bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedX:
         if (have_mastering_info) {
           *value = (double) mastering_info.display_primaries[0].x / 50000.0;
-          return S_OK;
+        } else {
+          *value = 0.0;
         }
-        return E_INVALIDARG;
+        return S_OK;
       case bmdDeckLinkFrameMetadataHDRDisplayPrimariesRedY:
         if (have_mastering_info) {
           *value = (double) mastering_info.display_primaries[0].y / 50000.0;
-          return S_OK;
+        } else {
+          *value = 0.0;
         }
-        return E_INVALIDARG;
+        return S_OK;
       case bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenX:
         if (have_mastering_info) {
           *value = (double) mastering_info.display_primaries[1].x / 50000.0;
-          return S_OK;
+        } else {
+          *value = 0.0;
         }
-        return E_INVALIDARG;
+        return S_OK;
       case bmdDeckLinkFrameMetadataHDRDisplayPrimariesGreenY:
         if (have_mastering_info) {
           *value = (double) mastering_info.display_primaries[1].y / 50000.0;
-          return S_OK;
+        } else {
+          *value = 0.0;
         }
-        return E_INVALIDARG;
+        return S_OK;
       case bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueX:
         if (have_mastering_info) {
           *value = (double) mastering_info.display_primaries[2].x / 50000.0;
-          return S_OK;
+        } else {
+          *value = 0.0;
         }
-        return E_INVALIDARG;
+        return S_OK;
       case bmdDeckLinkFrameMetadataHDRDisplayPrimariesBlueY:
         if (have_mastering_info) {
           *value = (double) mastering_info.display_primaries[2].y / 50000.0;
-          return S_OK;
+        } else {
+          *value = 0.0;
         }
-        return E_INVALIDARG;
+        return S_OK;
       case bmdDeckLinkFrameMetadataHDRWhitePointX:
         if (have_mastering_info) {
           *value = (double) mastering_info.white_point.x / 50000.0;
-          return S_OK;
+        } else {
+          *value = 0.0;
         }
-        return E_INVALIDARG;
+        return S_OK;
       case bmdDeckLinkFrameMetadataHDRWhitePointY:
         if (have_mastering_info) {
           *value = (double) mastering_info.white_point.y / 50000.0;
-          return S_OK;
+        } else {
+          *value = 0.0;
         }
-        return E_INVALIDARG;
+        return S_OK;
       case bmdDeckLinkFrameMetadataHDRMaxDisplayMasteringLuminance:
         if (have_mastering_info) {
           *value = (double) mastering_info.max_display_mastering_luminance * 65535.0 / 10000.0;
-          return S_OK;
+        } else {
+          *value = 0.0;
         }
-        return E_INVALIDARG;
+        return S_OK;
       case bmdDeckLinkFrameMetadataHDRMinDisplayMasteringLuminance:
         if (have_mastering_info) {
           *value = (double) mastering_info.min_display_mastering_luminance * 6.55350 / 10000.0;
-          return S_OK;
+        } else {
+          *value = 0.0;
         }
-        return E_INVALIDARG;
+        return S_OK;
       case bmdDeckLinkFrameMetadataHDRMaximumContentLightLevel:
         if (have_light_level) {
           *value = (double) light_level.max_content_light_level;
-          return S_OK;
+        } else {
+          *value = 0.0;
         }
-        return E_INVALIDARG;
+        return S_OK;
       case bmdDeckLinkFrameMetadataHDRMaximumFrameAverageLightLevel:
         if (have_light_level) {
           *value = (double) light_level.max_frame_average_light_level;
-          return S_OK;
+        } else {
+          *value = 0.0;
         }
-        return E_INVALIDARG;
+        return S_OK;
       default:
         return E_INVALIDARG;
     }
@@ -1226,12 +1239,10 @@ gst_decklink_video_sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
 static BMDDisplayModeFlags
 display_mode_flags (GstDecklinkVideoSink * self, GstDecklinkModeEnum e)
 {
-  BMDDisplayModeFlags display_flags =
-      bmdDisplayModeColorspaceRec601 | bmdDisplayModeColorspaceRec709 |
-      bmdDisplayModeColorspaceRec2020;
+  const GstDecklinkMode *gst_mode = gst_decklink_get_mode (e);
+  BMDDisplayModeFlags display_flags = gst_mode->mode_flags;
 
   if (self->output && self->output->output) {
-    const GstDecklinkMode *gst_mode = gst_decklink_get_mode (e);
     IDeckLinkDisplayMode *display_mode = nullptr;
     bool supports_colorspace = false;
 
@@ -1241,7 +1252,7 @@ display_mode_flags (GstDecklinkVideoSink * self, GstDecklinkModeEnum e)
     if (!supports_colorspace) {
       self->output->output->GetDisplayMode (gst_mode->mode, &display_mode);
       if (display_mode) {
-        display_flags = display_mode->GetFlags ();
+        display_flags &= display_mode->GetFlags ();
         display_mode->Release();
       }
     }

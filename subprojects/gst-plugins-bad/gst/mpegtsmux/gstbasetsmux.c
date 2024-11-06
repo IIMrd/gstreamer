@@ -525,7 +525,7 @@ gst_base_ts_mux_jpegxs_descriptor (GstBaseTsMux * mux,
   }
 
   {
-    guint16 schar = (depth & 0xf) << 4;
+    guint16 schar = ((depth - 1) & 0xf) << 4;
     /* FIXME : Support all other variants */
     if (!g_strcmp0 (sampling, "YCbCr-4:2:2")) {
       schar |= 0;
@@ -830,6 +830,8 @@ gst_base_ts_mux_create_or_update_stream (GstBaseTsMux * mux,
     ts_pad->prepare_func = gst_base_ts_mux_prepare_jpegxs;
     ts_pad->prepare_data = jpegxs_descriptor;
     ts_pad->free_func = gst_base_ts_mux_free_jpegxs;
+  } else if (strcmp (mt, "audio/x-smpte-302m") == 0) {
+    st = TSMUX_ST_PS_S302M;
   } else if (strcmp (mt, "image/x-jpc") == 0) {
     /*
      * See this document for more details on standard:
