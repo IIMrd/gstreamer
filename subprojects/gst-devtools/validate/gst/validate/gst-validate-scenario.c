@@ -139,6 +139,7 @@ enum
 {
   DONE,
   ACTION_DONE,
+  STOPPING,
   LAST_SIGNAL
 };
 
@@ -193,7 +194,6 @@ typedef struct
 struct _GstValidateScenarioPrivate
 {
   GstBus *bus;
-  GstValidateRunner *runner;
   gboolean execute_on_idle;
 
   GMutex lock;
@@ -2161,17 +2161,32 @@ typedef struct
 {
   GstValidateAction *action;
   GRecMutex m;
-  gulong sid;
+  gulong message_sid;
+  gulong stopping_sid;
 
   GList *wanted_streams;
+
+
+  gint wanted_n_calls;
+  gint n_calls;
+
 } SelectStreamData;
 
 static SelectStreamData *
 select_stream_data_new (GstValidateAction * action)
 {
-  SelectStreamData *d = g_new0 (SelectStreamData, 1);
+  SelectStreamData *d = g_atomic_rc_box_new0 (SelectStreamData);
 
-  d->action = action;
+  d->action = gst_validate_action_ref (action);
+  if (!gst_structure_get_int (action->structure, "n-calls", &d->wanted_n_calls)) {
+    d->wanted_n_calls = 1;
+  }
+
+  if (d->wanted_n_calls < -1) {
+    gst_validate_error_structure (action,
+        "`n-calls` in %" GST_PTR_FORMAT " can not be < -1, got %d",
+        action->structure, d->wanted_n_calls);
+  }
 
   return d;
 }
@@ -2181,9 +2196,13 @@ select_stream_data_free (SelectStreamData * d)
 {
   gst_validate_action_unref (d->action);
   g_list_free_full (d->wanted_streams, g_free);
-  g_free (d);
 }
 
+static void
+select_stream_data_unref (SelectStreamData * d)
+{
+  g_atomic_rc_box_release_full (d, (GDestroyNotify) select_stream_data_free);
+}
 
 static void
 stream_selection_cb (GstBus * bus, GstMessage * message, SelectStreamData * d)
@@ -2203,6 +2222,7 @@ stream_selection_cb (GstBus * bus, GstMessage * message, SelectStreamData * d)
       break;
     case GST_MESSAGE_STREAMS_SELECTED:
       g_rec_mutex_lock (&d->m);
+      scenario = gst_validate_action_get_scenario (d->action);
       gst_message_parse_streams_selected (message, &selected_streams);
       g_assert (selected_streams);
       goto done;
@@ -2274,19 +2294,60 @@ stream_selection_cb (GstBus * bus, GstMessage * message, SelectStreamData * d)
 
   g_list_free_full (d->wanted_streams, g_free);
   d->wanted_streams = streams;
+  d->n_calls += 1;
 
 done:
-  if (selected_streams && d->sid) {
+  if (selected_streams && d->message_sid &&
+      d->wanted_n_calls >= 1 && d->n_calls == d->wanted_n_calls) {
     /* Consider action done once we get the STREAM_SELECTED signal */
     gst_validate_action_set_done (gst_validate_action_ref (d->action));
     gst_bus_disable_sync_message_emission (bus);
-    g_signal_handler_disconnect (bus, d->sid);
-    d->sid = 0;
+    g_signal_handler_disconnect (bus, d->message_sid);
+    d->message_sid = 0;
+
+    if (d->stopping_sid) {
+      g_signal_handler_disconnect (scenario, d->stopping_sid);
+      d->stopping_sid = 0;
+    }
   }
 
   gst_clear_object (&scenario);
   gst_clear_object (&collection);
 
+  g_rec_mutex_unlock (&d->m);
+}
+
+static void
+stream_selection_scenario_stopping_cb (GstValidateScenario * scenario,
+    SelectStreamData * d)
+{
+  g_rec_mutex_lock (&d->m);
+  GstElement *pipeline = gst_validate_scenario_get_pipeline (scenario);
+  GstBus *bus = NULL;
+
+  if (pipeline) {
+    bus = gst_element_get_bus (pipeline);
+  }
+
+  if (!((d->wanted_n_calls == 0 && d->n_calls > 0) || d->wanted_n_calls == -1)) {
+    gst_validate_report_action (GST_VALIDATE_REPORTER (scenario), d->action,
+        SCENARIO_ACTION_EXECUTION_ERROR,
+        "Wrong number of calls: wanted %d got: %d",
+        d->wanted_n_calls, d->n_calls);
+  }
+
+  gst_validate_action_set_done (gst_validate_action_ref (d->action));
+
+  if (bus && d->message_sid) {
+    gst_bus_disable_sync_message_emission (bus);
+    g_signal_handler_disconnect (bus, d->message_sid);
+    d->message_sid = 0;
+  }
+
+  if (d->stopping_sid) {
+    g_signal_handler_disconnect (scenario, d->stopping_sid);
+    d->stopping_sid = 0;
+  }
   g_rec_mutex_unlock (&d->m);
 }
 
@@ -2302,10 +2363,15 @@ _execute_select_streams (GstValidateScenario * scenario,
   SelectStreamData *d = select_stream_data_new (action);
   /* Ensure that the data signal ID is set before the callback is called */
   g_rec_mutex_lock (&d->m);
-  d->sid = g_signal_connect_data (bus,
+  d->message_sid = g_signal_connect_data (bus,
       "sync-message",
       G_CALLBACK (stream_selection_cb),
-      d, (GClosureNotify) select_stream_data_free, 0);
+      d, (GClosureNotify) select_stream_data_unref, 0);
+  d->stopping_sid = g_signal_connect_data (scenario,
+      "stopping",
+      G_CALLBACK (stream_selection_scenario_stopping_cb),
+      g_atomic_rc_box_acquire (d),
+      (GClosureNotify) select_stream_data_unref, 0);
   g_rec_mutex_unlock (&d->m);
 
   gst_object_unref (bus);
@@ -3190,14 +3256,22 @@ typedef struct
   guint sigid;
   gboolean check_done;
   gboolean check_property;
+
+  gchar *parent_name;
+  gchar *object_name;
+  gchar *property_name;
   GMutex lock;
 } WaitingSignalData;
 
 static WaitingSignalData *
-waiting_signal_data_new (GstElement * target, GstValidateAction * action)
+waiting_signal_data_new (GstElement * target, GstValidateAction * action,
+    gchar * parent_name, gchar * object_name, gchar * property_name)
 {
   WaitingSignalData *data = g_new0 (WaitingSignalData, 1);
 
+  data->parent_name = parent_name;
+  data->object_name = object_name;
+  data->property_name = property_name;
   data->target = gst_object_ref (target);
   data->action = gst_validate_action_ref (action);
 
@@ -3212,6 +3286,9 @@ waiting_signal_data_free (WaitingSignalData * data)
 
   g_assert (scenario);
 
+  g_free (data->object_name);
+  g_free (data->parent_name);
+  g_free (data->property_name);
   gst_object_unref (data->target);
   gst_validate_action_unref (data->action);
   g_free (data);
@@ -3235,11 +3312,15 @@ waiting_signal_data_disconnect (WaitingSignalData * data,
 }
 
 static void
-stop_waiting_signal_cb (WaitingSignalData * data)
+stop_waiting_signal_cb (WaitingSignalData * data, GstObject * prop_object,
+    GParamSpec * prop, GstObject * object)
 {
   GstStructure *check = NULL;
   GstValidateAction *action = gst_validate_action_ref (data->action);
   GstValidateScenario *scenario = NULL;
+  const gchar *property_name = NULL;
+  gboolean check_property = data->check_property;
+  GstObject *property_check_target = GST_OBJECT_CAST (data->target);
 
   g_mutex_lock (&data->lock);
   if (data->check_done) {
@@ -3248,10 +3329,40 @@ stop_waiting_signal_cb (WaitingSignalData * data)
 
     goto cleanup;
   }
+
+  if (data->object_name) {
+    if (g_strcmp0 (data->object_name, GST_OBJECT_NAME (prop_object)) != 0) {
+      goto cleanup;
+    }
+
+    if (g_strcmp0 (data->property_name, prop->name) != 0) {
+      goto cleanup;
+    }
+
+    if (data->parent_name) {
+      GstObject *parent = gst_object_get_parent (prop_object);
+
+      if (parent && g_strcmp0 (data->parent_name, GST_OBJECT_NAME (parent))) {
+        goto cleanup;
+      }
+
+      gst_clear_object (&parent);
+    }
+
+    property_check_target = prop_object;
+    property_name = data->property_name;
+    check_property =
+        gst_structure_has_field (action->structure, "property-value");
+
+  } else {
+    property_name =
+        gst_structure_get_string (action->structure, "property-name");
+  }
+
   scenario = gst_validate_action_get_scenario (data->action);
-  if (data->check_property &&
-      _check_property (scenario, action, data->target,
-          gst_structure_get_string (action->structure, "property-name"),
+  if (check_property &&
+      _check_property (scenario, action, property_check_target,
+          property_name,
           gst_structure_get_value (action->structure, "property-value"),
           FALSE) != GST_VALIDATE_EXECUTE_ACTION_OK) {
 
@@ -3259,6 +3370,7 @@ stop_waiting_signal_cb (WaitingSignalData * data)
 
     goto cleanup;
   }
+  data->check_done = TRUE;
 
   waiting_signal_data_disconnect (data, scenario);
   if (gst_structure_get (action->structure, "check", GST_TYPE_STRUCTURE,
@@ -3282,6 +3394,7 @@ stop_waiting_signal_cb (WaitingSignalData * data)
 cleanup:
   gst_validate_action_unref (action);
   gst_clear_object (&scenario);
+  g_mutex_unlock (&data->lock);
 }
 
 static GstValidateExecuteActionReturn
@@ -3351,21 +3464,56 @@ _execute_wait_for_signal (GstValidateScenario * scenario,
   const GValue *property_value =
       gst_structure_get_value (action->structure, "property-value");
   DECLARE_AND_GET_PIPELINE (scenario, action);
-  gboolean checking_property = signal_name == NULL;
+  const gchar *deep_property_path =
+      gst_structure_get_string (action->structure, "deep-property-path");
+  gboolean checking_property = signal_name == NULL
+      && deep_property_path == NULL;
+  gchar *parent_name = NULL, *object_name = NULL, *deep_property_name = NULL;
 
-  REPORT_UNLESS (signal_name || property_name, done,
-      "No signal-name or property-name given for wait action");
-  REPORT_UNLESS (!property_name || (property_name && property_value), done,
-      "`property-name` specified without a `property-value`");
-  targets = _find_elements_defined_in_action (scenario, action);
-  REPORT_UNLESS ((g_list_length (targets) == 1), done,
-      "Could not find target element.");
+  if (deep_property_path && *deep_property_path) {
+    gchar **elem_pad_name = g_strsplit (deep_property_path, ".", 2);
+    gchar **object_prop_name =
+        g_strsplit (elem_pad_name[1] ? elem_pad_name[1] : elem_pad_name[0],
+        "::",
+        -1);
 
-  gst_validate_printf (action, "Waiting for '%s'\n",
-      signal_name ? signal_name : property_name);
+    REPORT_UNLESS (object_prop_name[1], done,
+        "Property specification %s is missing a `::propename` part",
+        deep_property_path);
 
-  target = targets->data;
-  data = waiting_signal_data_new (target, action);
+    deep_property_name = g_strdup (object_prop_name[1]);
+    object_name = g_strdup (object_prop_name[0]);
+    if (elem_pad_name[1]) {
+      parent_name = g_strdup (elem_pad_name[0]);
+    }
+
+    g_strfreev (elem_pad_name);
+    g_strfreev (object_prop_name);
+
+    target = gst_object_ref (pipeline);
+    signal_name = g_strdup ("deep-notify");
+
+    gst_validate_printf (action, "Waiting for 'deep-notify::%s'\n",
+        deep_property_name);
+  } else {
+
+    REPORT_UNLESS (signal_name || property_name, done,
+        "No signal-name or property-name given for wait action");
+    REPORT_UNLESS (!property_name || (property_name && property_value), done,
+        "`property-name` specified without a `property-value`");
+
+    targets = _find_elements_defined_in_action (scenario, action);
+    REPORT_UNLESS ((g_list_length (targets) == 1), done,
+        "Could not find target element.");
+    target = targets->data;
+    gst_validate_printf (action, "Waiting for '%s'\n",
+        signal_name ? signal_name : property_name);
+  }
+
+
+  data =
+      waiting_signal_data_new (target, action, parent_name, object_name,
+      deep_property_name);
 
   if (checking_property) {
     signal_name = g_strdup_printf ("notify::%s", property_name);
@@ -3394,8 +3542,7 @@ _execute_wait_for_signal (GstValidateScenario * scenario,
       non_blocking ? GST_VALIDATE_EXECUTE_ACTION_NON_BLOCKING :
       GST_VALIDATE_EXECUTE_ACTION_ASYNC;
   if (checking_property) {
-    GST_ERROR ("Checking property value");
-    if (_check_property (scenario, action, target, property_name,
+    if (_check_property (scenario, action, data->target, property_name,
             property_value, FALSE) == GST_VALIDATE_EXECUTE_ACTION_OK) {
       data->check_done = TRUE;
       waiting_signal_data_disconnect (data, scenario);
@@ -3490,6 +3637,8 @@ _execute_wait (GstValidateScenario * scenario, GstValidateAction * action)
 
   gst_structure_get_boolean (action->structure, "on-clock", &on_clock);
   if (gst_structure_has_field (action->structure, "signal-name")) {
+    return _execute_wait_for_signal (scenario, action);
+  } else if (gst_structure_has_field (action->structure, "deep-property-path")) {
     return _execute_wait_for_signal (scenario, action);
   } else if (gst_structure_has_field (action->structure, "property-name")) {
     return _execute_wait_for_signal (scenario, action);
@@ -5340,6 +5489,18 @@ gst_validate_scenario_load_structures (GstValidateScenario * scenario,
           &priv->max_latency);
 
       gst_structure_get_int (structure, "max-dropped", &priv->max_dropped);
+      gboolean monitor_all_pipelines = FALSE;
+      if (gst_structure_get_boolean (structure, "monitor-all-pipelines",
+              &monitor_all_pipelines) && monitor_all_pipelines) {
+        GstValidateRunner *runner =
+            gst_validate_reporter_get_runner (GST_VALIDATE_REPORTER (scenario));
+
+        g_assert (runner);
+        gst_validate_runner_set_monitor_all_pipelines (runner, TRUE);
+        gst_object_unref (runner);
+
+      }
+
       scenario->description = gst_structure_copy (structure);
 
       continue;
@@ -5680,6 +5841,19 @@ gst_validate_scenario_class_init (GstValidateScenarioClass * klass)
       g_signal_new ("action-done", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 1,
       GST_TYPE_VALIDATE_ACTION);
+
+  /**
+   * GstValidateScenario::stopping:
+   * @scenario: The scenario that is being stopped
+   *
+   * Emitted when the 'stop' action is fired
+   *
+   * Since: 1.26
+   */
+  scenario_signals[STOPPING] =
+      g_signal_new ("stopping", G_TYPE_FROM_CLASS (klass),
+      G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0);
+
 }
 
 static void
@@ -6861,6 +7035,9 @@ _execute_stop (GstValidateScenario * scenario, GstValidateAction * action)
   DECLARE_AND_GET_PIPELINE (scenario, action);
 
   bus = gst_element_get_bus (pipeline);
+
+  g_signal_emit (scenario, scenario_signals[STOPPING], 0);
+
   SCENARIO_LOCK (scenario);
   if (priv->execute_actions_source_id) {
     g_source_remove (priv->execute_actions_source_id);
@@ -7615,6 +7792,9 @@ register_action_types (void)
   GBytes *meta_expected_issues_doc =
       g_resource_lookup_data (resource, "/validate/doc/meta-expected-issues.md",
       G_RESOURCE_LOOKUP_FLAGS_NONE, NULL);
+  GBytes *meta_features_rank_doc =
+      g_resource_lookup_data (resource, "/validate/doc/meta-features-rank.md",
+      G_RESOURCE_LOOKUP_FLAGS_NONE, NULL);
 
   /*  *INDENT-OFF* */
   REGISTER_ACTION_TYPE ("meta", NULL,
@@ -7791,12 +7971,31 @@ register_action_types (void)
         .possible_variables = NULL,
         .def = "{}"
       },
+      {
+        .name="features-rank",
+        .description=g_bytes_get_data (meta_features_rank_doc, NULL),
+        .mandatory = FALSE,
+        .types = "bool",
+        .possible_variables = NULL,
+        .def = "false"
+      },
+      {
+        .name="monitor-all-pipelines",
+        .description="This should only be used in `.validatetest` files, and allows forcing to monitor "
+                     "all pipelines instead of only the one the tools wanted to monitor, for example to "
+                     "use `validateflow` on auxilary pipelines",
+        .mandatory = FALSE,
+        .types = "bool",
+        .possible_variables = NULL,
+        .def = "false"
+      },
       {NULL}
       }),
       "Scenario metadata.\n\nNOTE: it used to be called \"description\"",
       GST_VALIDATE_ACTION_TYPE_CONFIG);
   g_bytes_unref (meta_config_doc);
   g_bytes_unref (meta_expected_issues_doc);
+  g_bytes_unref (meta_features_rank_doc);
 
   REGISTER_ACTION_TYPE ("seek", _execute_seek,
       ((GstValidateActionParameter [])  {
@@ -7901,6 +8100,17 @@ register_action_types (void)
           .description = "Indexes of the streams in the StreamCollection to select",
           .mandatory = TRUE,
           .types = "[int]",
+          .possible_variables = NULL,
+        },
+        {
+          .name = "n-calls",
+          .description = "Number of times the `select-stream` event should be sent to the pipeline\n"
+                        " - `0` means 0 or more"
+                        " - `-1` means at least once"
+                        " - Other numbers are exact number of calls",
+          .mandatory = FALSE,
+          .types = "int",
+          .def = "1",
           .possible_variables = NULL,
         },
         {NULL}
@@ -8030,6 +8240,19 @@ register_action_types (void)
           .types = "structure",
           NULL
         },
+        {
+          .name = "deep-property-path",
+          .description = "The property to wait to be set on the object inside the pipeline that matches"
+                         " the path defined as:\n\n"
+                          "```\n"
+                          "element-name.padname::property-name=new-value\n"
+                          "```\n\n"
+                          "> NOTE: `.padname` is not needed if setting a property on an element\n\n",
+          .mandatory = FALSE,
+          .types = "string",
+          NULL
+        },
+
         {NULL}
       }),
       "Waits for signal 'signal-name', message 'message-type', or during 'duration' seconds",

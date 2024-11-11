@@ -43,6 +43,7 @@ import shutil
 import uuid
 from itertools import cycle
 from fractions import Fraction
+from pathlib import Path
 
 from .utils import GstCaps, which
 from . import reporters
@@ -191,6 +192,14 @@ class Test(Loggable):
 
         self.clean()
 
+    def remove_logs(self):
+        for logfile in set([self.logfile]) | self.extra_logfiles:
+            try:
+                os.remove(logfile)
+                self.info("Removed %s after test passed.", logfile)
+            except FileNotFoundError:
+                pass
+
     def _generate_expected_issues(self):
         return ''
 
@@ -308,14 +317,18 @@ class Test(Loggable):
             for logfile in self.extra_logfiles:
                 # Only copy over extra logfile content if it's below a certain threshold
                 # Avoid copying gigabytes of data if a lot of debugging is activated
-                if os.path.getsize(logfile) < 500 * 1024:
-                    self.out.write('\n\n## %s:\n\n```\n%s\n```\n' % (
-                        os.path.basename(logfile), self.get_extra_log_content(logfile))
-                    )
-                else:
-                    self.out.write('\n\n## %s:\n\n**Log file too big.**\n  %s\n\n Check file content directly\n\n' % (
-                        os.path.basename(logfile), logfile)
-                    )
+                try:
+                    if os.path.getsize(logfile) < 500 * 1024:
+                        self.out.write('\n\n## %s:\n\n```\n%s\n```\n' % (
+                            os.path.basename(logfile), self.get_extra_log_content(logfile))
+                        )
+                    else:
+                        self.out.write('\n\n## %s:\n\n**Log file too big.**\n  %s\n\n Check file content directly\n\n' % (
+                            os.path.basename(logfile), logfile)
+                        )
+                except FileNotFoundError as e:
+                    self.info(f"Failed to copy logfile {logfile}: {e}")
+                    pass
 
             if self.rr_logdir:
                 self.out.write('\n\n## rr trace:\n\n```\nrr replay %s/latest-trace\n```\n' % (
@@ -784,7 +797,11 @@ class Test(Loggable):
         self.logfile = shutil.copy(self.logfile, path)
         extra_logs = []
         for logfile in self.extra_logfiles:
-            extra_logs.append(shutil.copy(logfile, path))
+            try:
+                extra_logs.append(shutil.copy(logfile, path))
+            except FileNotFoundError as e:
+                self.info(f"Failed to copy logfile {logfile}: {e}")
+                pass
         self.extra_logfiles = extra_logs
 
     def test_end(self, retry_on_failures=False):
@@ -926,6 +943,7 @@ class GstValidateTest(Test):
         self.media_descriptor = media_descriptor
         self.server = None
         self.criticals = []
+        self.dotfilesdir = None
 
         override_path = self.get_override_file(media_descriptor)
         if override_path:
@@ -1031,6 +1049,12 @@ class GstValidateTest(Test):
         subproc_env['GST_XINITTHREADS'] = '1'
         self.add_env_variable('GST_XINITTHREADS', '1')
 
+        vaildateconfigs_path = os.environ.get('GST_VALIDATE_TEST_CONFIG_PATH', "")
+        extra_configs = os.path.join(self.options.logsdir, "_validate_test_extra_configs")
+        vaildateconfigs_path = f"{extra_configs}{os.pathsep}{vaildateconfigs_path}"
+        subproc_env['GST_VALIDATE_TEST_CONFIG_PATH'] = vaildateconfigs_path
+        self.add_env_variable('GST_VALIDATE_TEST_CONFIG_PATH', vaildateconfigs_path)
+
         if self.scenario is not None:
             scenario = self.scenario.get_execution_name()
             subproc_env["GST_VALIDATE_SCENARIO"] = scenario
@@ -1043,16 +1067,20 @@ class GstValidateTest(Test):
                 pass
 
         if not subproc_env.get('GST_DEBUG_DUMP_DOT_DIR'):
-            dotfilesdir = os.path.join(self.options.logsdir,
-                                self.classname.replace(".", os.sep) + '.pipelines_dot_files')
-            mkdir(dotfilesdir)
-            subproc_env['GST_DEBUG_DUMP_DOT_DIR'] = dotfilesdir
+            self.dotfilesdir = os.path.splitext(self.logfile)[0] + '.pipelines_dot_files'
+            mkdir(self.dotfilesdir)
+            subproc_env['GST_DEBUG_DUMP_DOT_DIR'] = self.dotfilesdir
             if CI_ARTIFACTS_URL:
-                dotfilesurl = CI_ARTIFACTS_URL + os.path.relpath(dotfilesdir,
+                dotfilesurl = CI_ARTIFACTS_URL + os.path.relpath(self.dotfilesdir,
                                                                  self.options.logsdir)
                 subproc_env['GST_VALIDATE_DEBUG_DUMP_DOT_URL'] = dotfilesurl
 
         return subproc_env
+
+    def remove_logs(self):
+        super().remove_logs()
+        if self.dotfilesdir:
+            shutil.rmtree(self.dotfilesdir, ignore_errors=True)
 
     def clean(self):
         Test.clean(self)
@@ -2023,6 +2051,10 @@ class _TestsLauncher(Loggable):
         if self.needs_http_server() or options.httponly is True:
             self.httpsrv = HTTPServer(options)
             self.httpsrv.start()
+            configsdir = Path(options.logsdir) / "_validate_test_extra_configs"
+            os.makedirs(configsdir, exist_ok=True)
+            with open(configsdir / "http_server_port.var", "w") as f:
+                f.write(f"set-globals,http_server_port={self.options.http_server_port}")
 
         if options.no_display:
             self.vfb_server = get_virual_frame_buffer_server(options)
@@ -2288,6 +2320,10 @@ class _TestsLauncher(Loggable):
                     total_num_tests=total_num_tests)
                 if to_report:
                     self.reporter.after_test(test)
+
+                if res == Result.PASSED and not self.options.keep_logs:
+                    test.remove_logs()
+
                 if self.start_new_job(tests_left):
                     jobs_running += 1
 
