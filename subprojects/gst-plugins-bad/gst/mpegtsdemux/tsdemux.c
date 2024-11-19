@@ -239,6 +239,7 @@ guint64 system_time = 1;
       "systemstream = (boolean) FALSE; " \
     "video/x-h264,stream-format=(string)byte-stream;" \
     "video/x-h265,stream-format=(string)byte-stream;" \
+    "video/x-vp9;" \
     "video/x-dirac;" \
     "video/x-cavs;" \
     "video/x-wmv," \
@@ -1758,6 +1759,10 @@ create_pad_for_stream (MpegTSBase *base, MpegTSBaseStream *bstream,
         case DRF_ID_AC4:
           is_audio = TRUE;
           caps = gst_caps_new_empty_simple ("audio/x-ac4");
+          break;
+        case DRF_ID_VP09:
+          is_video = TRUE;
+          caps = gst_caps_new_empty_simple ("video/x-vp9");
           break;
         case DRF_ID_VANC:
           is_private = TRUE;

@@ -1507,7 +1507,8 @@ _dma_buf_upload_accept (gpointer impl, GstBuffer * buffer, GstCaps * in_caps,
     return FALSE;
   }
 
-  if (!dmabuf->direct && in_info_drm->drm_modifier != DRM_FORMAT_MOD_LINEAR) {
+  if (!dmabuf->direct && in_info_drm->drm_modifier != DRM_FORMAT_MOD_LINEAR
+      && in_info_drm->drm_modifier != DRM_FORMAT_MOD_INVALID) {
     GST_DEBUG_OBJECT (dmabuf->upload,
         "Indirect uploads are only support for linear formats.");
     return FALSE;
@@ -3524,7 +3525,7 @@ _upload_find_method (GstGLUpload * upload, gpointer last_impl)
   upload->priv->method = upload_methods[method_i];
   upload->priv->method_impl = upload->priv->upload_impl[method_i];
 
-  GST_DEBUG_OBJECT (upload, "attempting upload with uploader %s",
+  GST_INFO_OBJECT (upload, "attempting upload with uploader %s",
       upload->priv->method->name);
 
   upload->priv->method_i++;

@@ -902,8 +902,9 @@ gst_ffmpegviddec_ensure_internal_pool (GstFFMpegVidDec * ffmpegdec,
       ffmpegdec->pool_format == picture->format)
     return;
 
-  GST_DEBUG_OBJECT (ffmpegdec, "Updating internal pool (%i, %i)",
-      picture->width, picture->height);
+  GST_DEBUG_OBJECT (ffmpegdec, "Updating internal pool (%i, %i) -> (%i, %i)",
+      ffmpegdec->pool_width, ffmpegdec->pool_height, picture->width,
+      picture->height);
 
   /* if we are negotiating from get_buffer, then renegotiate later in order
    * to potentially use a downstream pool */
@@ -2026,8 +2027,12 @@ gst_ffmpegviddec_video_frame (GstFFMpegVidDec * ffmpegdec,
         gst_buffer_get_video_meta (output_frame->output_buffer);
     if (vmeta) {
       GstVideoInfo *info = &ffmpegdec->output_state->info;
-      g_assert ((gint) vmeta->width == GST_VIDEO_INFO_WIDTH (info));
-      g_assert ((gint) vmeta->height == GST_VIDEO_INFO_HEIGHT (info));
+      if (vmeta->width != GST_VIDEO_INFO_WIDTH (info) ||
+          vmeta->height != GST_VIDEO_INFO_HEIGHT (info)) {
+        g_error ("video meta uses %dx%d instead of %dx%d",
+            vmeta->width, vmeta->height, GST_VIDEO_INFO_WIDTH (info),
+            GST_VIDEO_INFO_HEIGHT (info));
+      }
     }
   }
 #endif

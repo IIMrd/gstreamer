@@ -256,10 +256,12 @@ enum
   PROP_BITRATE,
   PROP_PCR_INTERVAL,
   PROP_SCTE_35_PID,
-  PROP_SCTE_35_NULL_INTERVAL
+  PROP_SCTE_35_NULL_INTERVAL,
+  PROP_ENABLE_CUSTOM_MAPPINGS
 };
 
 #define DEFAULT_SCTE_35_PID 0
+#define DEFAULT_ENABLE_CUSTOM_MAPPINGS FALSE
 
 #define BASETSMUX_DEFAULT_ALIGNMENT    -1
 
@@ -624,6 +626,13 @@ gst_base_ts_mux_create_or_update_stream (GstBaseTsMux * mux,
     st = TSMUX_ST_VIDEO_H264;
   } else if (strcmp (mt, "video/x-h265") == 0) {
     st = TSMUX_ST_VIDEO_HEVC;
+  } else if (strcmp (mt, "video/x-vp9") == 0) {
+    if (mux->enable_custom_mappings) {
+      st = TSMUX_ST_PS_VP9;
+    } else {
+      GST_ERROR_OBJECT (mux,
+          "VP9 requires enabling custom mapping which does not have a public specification");
+    }
   } else if (strcmp (mt, "audio/mpeg") == 0) {
     gint mpegversion;
 
@@ -936,7 +945,10 @@ gst_base_ts_mux_create_or_update_stream (GstBaseTsMux * mux,
   }
 
   if (st == TSMUX_ST_RESERVED) {
-    GST_ERROR_OBJECT (ts_pad, "Failed to determine stream type");
+    GST_ELEMENT_ERROR (mux, STREAM, MUX,
+        ("Failed to determine stream type or mapping is not supported"),
+        ("If you're using an experimental or non-standard mapping you may have to "
+            "set the enable-custom-mappings property to TRUE."));
     goto error;
   }
 
@@ -2617,7 +2629,8 @@ beach:
 }
 
 static GstBaseTsMuxPad *
-gst_base_ts_mux_find_best_pad (GstAggregator * aggregator, gboolean timeout)
+gst_base_ts_mux_find_best_pad (GstAggregator * aggregator,
+    GstClockTime * best_time, gboolean timeout)
 {
   GstBaseTsMuxPad *best = NULL;
   GstClockTime best_ts = GST_CLOCK_TIME_NONE;
@@ -2629,6 +2642,7 @@ gst_base_ts_mux_find_best_pad (GstAggregator * aggregator, gboolean timeout)
     GstBaseTsMuxPad *tpad = GST_BASE_TS_MUX_PAD (l->data);
     GstAggregatorPad *apad = GST_AGGREGATOR_PAD_CAST (tpad);
     GstBuffer *buffer;
+    GstClockTime ts;
 
     buffer = gst_aggregator_pad_peek_buffer (apad);
     if (!buffer) {
@@ -2639,21 +2653,29 @@ gst_base_ts_mux_find_best_pad (GstAggregator * aggregator, gboolean timeout)
       }
       continue;
     }
-    if (best_ts == GST_CLOCK_TIME_NONE) {
+
+    ts = GST_BUFFER_DTS_OR_PTS (buffer);
+    if (!GST_CLOCK_TIME_IS_VALID (ts)) {
+      GST_WARNING_OBJECT (apad, "Buffer has no timestamp: %" GST_PTR_FORMAT,
+          buffer);
       best = tpad;
-      best_ts = GST_BUFFER_DTS_OR_PTS (buffer);
-    } else if (GST_BUFFER_DTS_OR_PTS (buffer) != GST_CLOCK_TIME_NONE) {
-      GstClockTime t = GST_BUFFER_DTS_OR_PTS (buffer);
-      if (t < best_ts) {
-        best = tpad;
-        best_ts = t;
-      }
+      best_ts = ts;
+      gst_buffer_unref (buffer);
+      break;
+    }
+
+    if (!GST_CLOCK_TIME_IS_VALID (best_ts) || ts < best_ts) {
+      best = tpad;
+      best_ts = ts;
     }
     gst_buffer_unref (buffer);
   }
 
-  if (best)
+  if (best) {
     gst_object_ref (best);
+    if (best_time)
+      *best_time = best_ts;
+  }
 
   GST_OBJECT_UNLOCK (aggregator);
 
@@ -2692,7 +2714,7 @@ gst_base_ts_mux_aggregate (GstAggregator * agg, gboolean timeout)
 {
   GstBaseTsMux *mux = GST_BASE_TS_MUX (agg);
   GstFlowReturn ret = GST_FLOW_OK;
-  GstBaseTsMuxPad *best = gst_base_ts_mux_find_best_pad (agg, timeout);
+  GstBaseTsMuxPad *best = gst_base_ts_mux_find_best_pad (agg, NULL, timeout);
   GstCaps *caps;
 
   /* set caps on the srcpad if no caps were set yet */
@@ -2764,6 +2786,21 @@ gst_base_ts_mux_stop (GstAggregator * agg)
   g_mutex_unlock (&mux->lock);
 
   return TRUE;
+}
+
+static GstClockTime
+gst_base_ts_mux_get_next_time (GstAggregator * agg)
+{
+  GstBaseTsMuxPad *best = NULL;
+  GstClockTime next_time = GST_CLOCK_TIME_NONE;
+
+  best = gst_base_ts_mux_find_best_pad (agg, &next_time, TRUE);
+  // Buffer without timestamps are muxed immediately
+  if (best && next_time == GST_CLOCK_TIME_NONE)
+    next_time = 0;
+  gst_clear_object (&best);
+
+  return next_time;
 }
 
 /* GObject implementation */
@@ -2880,6 +2917,9 @@ gst_base_ts_mux_set_property (GObject * object, guint prop_id,
     case PROP_SCTE_35_NULL_INTERVAL:
       mux->scte35_null_interval = g_value_get_uint (value);
       break;
+    case PROP_ENABLE_CUSTOM_MAPPINGS:
+      mux->enable_custom_mappings = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2919,6 +2959,9 @@ gst_base_ts_mux_get_property (GObject * object, guint prop_id,
       break;
     case PROP_SCTE_35_NULL_INTERVAL:
       g_value_set_uint (value, mux->scte35_null_interval);
+      break;
+    case PROP_ENABLE_CUSTOM_MAPPINGS:
+      g_value_set_boolean (value, mux->enable_custom_mappings);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -3010,7 +3053,7 @@ gst_base_ts_mux_class_init (GstBaseTsMuxClass * klass)
   gstagg_class->src_event = gst_base_ts_mux_src_event;
   gstagg_class->start = gst_base_ts_mux_start;
   gstagg_class->stop = gst_base_ts_mux_stop;
-  gstagg_class->get_next_time = gst_aggregator_simple_get_next_time;
+  gstagg_class->get_next_time = gst_base_ts_mux_get_next_time;
 
   klass->create_ts_mux = gst_base_ts_mux_default_create_ts_mux;
   klass->allocate_packet = gst_base_ts_mux_default_allocate_packet;
@@ -3074,6 +3117,20 @@ gst_base_ts_mux_class_init (GstBaseTsMuxClass * klass)
           TSMUX_DEFAULT_SCTE_35_NULL_INTERVAL,
           (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
+  /**
+   * GstBaseTsMux:enable-custom-mappings:
+   *
+   * Enable custom mappings for which there are no official specifications
+   *
+   * Since: 1.26
+   */
+  g_object_class_install_property (G_OBJECT_CLASS (klass),
+      PROP_ENABLE_CUSTOM_MAPPINGS,
+      g_param_spec_boolean ("enable-custom-mappings", "Enable custom mappings",
+          "Enable custom mappings for which there are no official specifications",
+          DEFAULT_ENABLE_CUSTOM_MAPPINGS,
+          (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
   gst_element_class_add_static_pad_template_with_gtype (gstelement_class,
       &gst_base_ts_mux_src_factory, GST_TYPE_AGGREGATOR_PAD);
 
@@ -3095,6 +3152,7 @@ gst_base_ts_mux_init (GstBaseTsMux * mux)
   mux->bitrate = TSMUX_DEFAULT_BITRATE;
   mux->scte35_pid = DEFAULT_SCTE_35_PID;
   mux->scte35_null_interval = TSMUX_DEFAULT_SCTE_35_NULL_INTERVAL;
+  mux->enable_custom_mappings = DEFAULT_ENABLE_CUSTOM_MAPPINGS;
 
   mux->packet_size = GST_BASE_TS_MUX_NORMAL_PACKET_LENGTH;
   mux->automatic_alignment = 0;
