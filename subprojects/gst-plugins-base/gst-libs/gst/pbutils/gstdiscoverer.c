@@ -94,8 +94,11 @@ struct _GstDiscovererPrivate
 
   /* current items */
   GstDiscovererInfo *current_info;
+  gint current_info_stream_count;
   GError *current_error;
   GstStructure *current_topology;
+  gchar *current_cachefile;
+  gboolean current_info_from_cache;
 
   GstTagList *all_tags;
   GstTagList *global_tags;
@@ -1277,7 +1280,7 @@ parse_stream_topology (GstDiscoverer * dc, const GstStructure * topology,
     }
 
     if (add_to_list) {
-      res->stream_number = dc->priv->current_info->stream_count++;
+      res->stream_number = dc->priv->current_info_stream_count++;
       dc->priv->current_info->stream_list =
           g_list_append (dc->priv->current_info->stream_list, res);
     } else {
@@ -1368,12 +1371,12 @@ static void
 serialize_info_if_required (GstDiscoverer * dc, GstDiscovererInfo * info)
 {
 
-  if (dc->priv->use_cache && info->cachefile
+  if (dc->priv->use_cache && dc->priv->current_cachefile
       && info->result == GST_DISCOVERER_OK) {
     GVariant *variant = gst_discoverer_info_to_variant (info,
         GST_DISCOVERER_SERIALIZE_ALL);
 
-    g_file_set_contents (info->cachefile,
+    g_file_set_contents (dc->priv->current_cachefile,
         g_variant_get_data (variant), g_variant_get_size (variant), NULL);
     g_variant_unref (variant);
   }
@@ -1390,6 +1393,10 @@ emit_discovered (GstDiscoverer * dc)
   /* Clients get a copy of current_info since it is a boxed type */
   gst_discoverer_info_unref (dc->priv->current_info);
   dc->priv->current_info = NULL;
+  dc->priv->current_info_stream_count = 0;
+  g_free (dc->priv->current_cachefile);
+  dc->priv->current_cachefile = NULL;
+  dc->priv->current_info_from_cache = FALSE;
 }
 
 static gboolean
@@ -1417,9 +1424,9 @@ discoverer_collect (GstDiscoverer * dc)
   }
 
   if (dc->priv->use_cache && dc->priv->current_info
-      && dc->priv->current_info->from_cache) {
+      && dc->priv->current_info_from_cache) {
     GST_DEBUG_OBJECT (dc,
-        "Nothing to collect as the info was built from" " the cache");
+        "Nothing to collect as the info was built from the cache");
     return;
   }
 
@@ -1487,7 +1494,7 @@ discoverer_collect (GstDiscoverer * dc)
       dc->priv->current_info->live = TRUE;
 
     if (dc->priv->current_topology) {
-      dc->priv->current_info->stream_count = 1;
+      dc->priv->current_info_stream_count = 1;
       dc->priv->current_info->stream_info = parse_stream_topology (dc,
           dc->priv->current_topology, NULL);
       if (dc->priv->current_info->stream_info)
@@ -1519,6 +1526,10 @@ discoverer_collect (GstDiscoverer * dc)
   }
 
   _ensure_info_tags (dc);
+#if !GLIB_CHECK_VERSION(2,74,0)
+  /* Make sure the missing element details are NULL-terminated */
+  g_ptr_array_add (dc->priv->current_info->missing_elements_details, NULL);
+#endif
   serialize_info_if_required (dc, dc->priv->current_info);
   if (dc->priv->async)
     emit_discovered (dc);
@@ -1846,13 +1857,14 @@ _get_info_from_cachefile (GstDiscoverer * dc, gchar * cachefile)
     g_variant_unref (variant);
 
     if (info) {
-      info->cachefile = cachefile;
-      info->from_cache = (gpointer) 0x01;
+      dc->priv->current_cachefile = cachefile;
+      dc->priv->current_info_from_cache = TRUE;
     } else {
       g_free (cachefile);
     }
 
-    GST_INFO_OBJECT (dc, "Got info from cache: %p %s", info, info->cachefile);
+    GST_INFO_OBJECT (dc, "Got info from cache: %p %s", info,
+        dc->priv->current_cachefile);
     g_free (data);
 
     return info;
@@ -1907,8 +1919,9 @@ _setup_locked (GstDiscoverer * dc)
   /* Pop URI off the pending URI list */
   dc->priv->current_info =
       (GstDiscovererInfo *) g_object_new (GST_TYPE_DISCOVERER_INFO, NULL);
+  dc->priv->current_info_stream_count = 0;
   if (dc->priv->use_cache)
-    dc->priv->current_info->cachefile = _serialized_info_get_path (dc, uri);
+    dc->priv->current_cachefile = _serialized_info_get_path (dc, uri);
   dc->priv->current_info->uri = uri;
 
   /* set uri on uridecodebin */
@@ -1975,6 +1988,10 @@ discoverer_cleanup (GstDiscoverer * dc)
   }
 
   dc->priv->current_info = NULL;
+  dc->priv->current_info_stream_count = 0;
+  g_free (dc->priv->current_cachefile);
+  dc->priv->current_cachefile = NULL;
+  dc->priv->current_info_from_cache = FALSE;
 
   if (dc->priv->all_tags) {
     gst_tag_list_unref (dc->priv->all_tags);
@@ -2047,6 +2064,13 @@ start_discovering (GstDiscoverer * dc)
   GST_DEBUG ("Starting");
 
   DISCO_LOCK (dc);
+  if (dc->priv->cleanup) {
+    GST_DEBUG ("The discoverer is busy cleaning up.");
+    res = GST_DISCOVERER_BUSY;
+    DISCO_UNLOCK (dc);
+    goto beach;
+  }
+
   if (dc->priv->pending_uris == NULL) {
     GST_WARNING ("No URI to process");
     res = GST_DISCOVERER_URI_INVALID;

@@ -11245,7 +11245,7 @@
         "url": "Unknown package origin"
     },
     "navigationtest": {
-        "description": "Template for a video filter",
+        "description": "Navigation event handling test plugin",
         "elements": {
             "navigationtest": {
                 "author": "David Schleef <ds@schleef.org>",
@@ -11556,9 +11556,106 @@
     "osxaudio": {
         "description": "OSX (Mac OS X) audio support for GStreamer",
         "elements": {
+            "atdec": {
+                "author": "Alessandro Decina <alessandro.d@gmail.com>",
+                "description": "AudioToolbox based audio decoder",
+                "hierarchy": [
+                    "GstATDec",
+                    "GstAudioDecoder",
+                    "GstElement",
+                    "GstObject",
+                    "GInitiallyUnowned",
+                    "GObject"
+                ],
+                "klass": "Codec/Decoder/Audio",
+                "pad-templates": {
+                    "sink": {
+                        "caps": "audio/mpeg:\n    mpegversion: 4\n         framed: true\n       channels: [ 1, 2147483647 ]\naudio/mpeg:\n    mpegversion: 1\n          layer: [ 1, 3 ]\n",
+                        "direction": "sink",
+                        "presence": "always"
+                    },
+                    "src": {
+                        "caps": "audio/x-raw:\n         format: S16LE\n           rate: [ 1, 2147483647 ]\n       channels: [ 1, 2147483647 ]\n         layout: interleaved\naudio/x-raw:\n         format: F32LE\n           rate: [ 1, 2147483647 ]\n       channels: [ 1, 2147483647 ]\n         layout: interleaved\n",
+                        "direction": "src",
+                        "presence": "always"
+                    }
+                },
+                "rank": "marginal"
+            },
+            "atenc": {
+                "author": "Piotr Brzeziński <piotr@centricular.com>",
+                "description": "AudioToolbox based audio encoder for macOS/iOS",
+                "hierarchy": [
+                    "GstATEnc",
+                    "GstAudioEncoder",
+                    "GstElement",
+                    "GstObject",
+                    "GInitiallyUnowned",
+                    "GObject"
+                ],
+                "interfaces": [
+                    "GstPreset"
+                ],
+                "klass": "Coder/Encoder/Audio/Converter",
+                "pad-templates": {
+                    "sink": {
+                        "caps": "audio/x-raw:\n         format: S16LE\n         layout: interleaved\n           rate: { (int)8000, (int)11025, (int)12000, (int)16000, (int)22050, (int)24000, (int)32000, (int)44100, (int)48000 }\n       channels: [ 1, 8 ]\n",
+                        "direction": "sink",
+                        "presence": "always"
+                    },
+                    "src": {
+                        "caps": "audio/mpeg:\n    mpegversion: 4\n           rate: { (int)8000, (int)11025, (int)12000, (int)16000, (int)22050, (int)24000, (int)32000, (int)44100, (int)48000 }\n       channels: [ 1, 8 ]\n  stream-format: raw\n        profile: lc\n         framed: true\n",
+                        "direction": "src",
+                        "presence": "always"
+                    }
+                },
+                "properties": {
+                    "bitrate": {
+                        "blurb": "target output bitrate in bps (for rate-control=cbr/lta) (0 - auto)",
+                        "conditionally-available": false,
+                        "construct": false,
+                        "construct-only": false,
+                        "controllable": false,
+                        "default": "0",
+                        "max": "-1",
+                        "min": "0",
+                        "mutable": "null",
+                        "readable": true,
+                        "type": "guint",
+                        "writable": true
+                    },
+                    "rate-control": {
+                        "blurb": "Mode of output bitrate control to be applied",
+                        "conditionally-available": false,
+                        "construct": false,
+                        "construct-only": false,
+                        "controllable": false,
+                        "default": "cbr (0)",
+                        "mutable": "null",
+                        "readable": true,
+                        "type": "GstATEncRateControl",
+                        "writable": true
+                    },
+                    "vbr-quality": {
+                        "blurb": "Sound quality setting for VBR encoding (rate-control=vbr) (0-127)",
+                        "conditionally-available": false,
+                        "construct": false,
+                        "construct-only": false,
+                        "controllable": false,
+                        "default": "65",
+                        "max": "127",
+                        "min": "0",
+                        "mutable": "null",
+                        "readable": true,
+                        "type": "guint",
+                        "writable": true
+                    }
+                },
+                "rank": "primary"
+            },
             "osxaudiosink": {
                 "author": "Zaheer Abbas Merali <zaheerabbas at merali dot org>",
-                "description": "Output to a sound card in OS X",
+                "description": "Output to a sound card on macOS",
                 "hierarchy": [
                     "GstOsxAudioSink",
                     "GstAudioBaseSink",
@@ -11595,6 +11692,18 @@
                         "type": "gint",
                         "writable": true
                     },
+                    "unique-id": {
+                        "blurb": "Unique persistent ID for the input device",
+                        "conditionally-available": false,
+                        "construct": false,
+                        "construct-only": false,
+                        "controllable": false,
+                        "default": "NULL",
+                        "mutable": "null",
+                        "readable": true,
+                        "type": "gchararray",
+                        "writable": false
+                    },
                     "volume": {
                         "blurb": "Volume of this stream",
                         "conditionally-available": false,
@@ -11614,7 +11723,7 @@
             },
             "osxaudiosrc": {
                 "author": "Zaheer Abbas Merali <zaheerabbas at merali dot org>",
-                "description": "Input from a sound card in OS X",
+                "description": "Input from a sound card on macOS",
                 "hierarchy": [
                     "GstOsxAudioSrc",
                     "GstAudioBaseSrc",
@@ -11651,6 +11760,18 @@
                         "readable": true,
                         "type": "gint",
                         "writable": true
+                    },
+                    "unique-id": {
+                        "blurb": "Unique persistent ID for the input device",
+                        "conditionally-available": false,
+                        "construct": false,
+                        "construct-only": false,
+                        "controllable": false,
+                        "default": "NULL",
+                        "mutable": "null",
+                        "readable": true,
+                        "type": "gchararray",
+                        "writable": false
                     }
                 },
                 "rank": "primary"
@@ -11659,6 +11780,31 @@
         "filename": "gstosxaudio",
         "license": "LGPL",
         "other-types": {
+            "GstATEncRateControl": {
+                "kind": "enum",
+                "values": [
+                    {
+                        "desc": "Constant bitrate",
+                        "name": "cbr",
+                        "value": "0"
+                    },
+                    {
+                        "desc": "Long-term-average bitrate",
+                        "name": "lta",
+                        "value": "1"
+                    },
+                    {
+                        "desc": "Constrained variable bitrate",
+                        "name": "cvbr",
+                        "value": "2"
+                    },
+                    {
+                        "desc": "Variable bitrate",
+                        "name": "vbr",
+                        "value": "3"
+                    }
+                ]
+            },
             "GstOsxAudioElement": {
                 "hierarchy": [
                     "GstOsxAudioElement",
@@ -11677,7 +11823,7 @@
         "elements": {
             "osxvideosink": {
                 "author": "Zaheer Abbas Merali <zaheerabbas at merali dot org>",
-                "description": "OSX native videosink",
+                "description": "macOS native videosink",
                 "hierarchy": [
                     "GstOSXVideoSink",
                     "GstVideoSink",
@@ -26048,7 +26194,7 @@
                 "long-name": "Video (video4linux2) Sink",
                 "pad-templates": {
                     "sink": {
-                        "caps": "image/jpeg:\n         parsed: true\nvideo/mpeg:\n    mpegversion: 4\n   systemstream: false\nvideo/mpeg:\n    mpegversion: { (int)1, (int)2 }\nvideo/mpegts:\n   systemstream: true\nvideo/x-bayer:\n         format: { bggr, gbrg, grbg, rggb, bggr10le, gbrg10le, grbg10le, rggb10le, bggr12le, gbrg12le, grbg12le, rggb12le, bggr14le, gbrg14le, grbg14le, rggb14le, bggr16le, gbrg16le, grbg16le, rggb16le }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-dv:\n   systemstream: true\nvideo/x-fwht:\nvideo/x-h263:\n        variant: itu\nvideo/x-h264:\n  stream-format: { (string)byte-stream, (string)avc }\n      alignment: au\nvideo/x-h265:\n  stream-format: byte-stream\n      alignment: au\nvideo/x-pwc1:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-pwc2:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-raw:\n         format: { RGB15, RGB16, BGR, RGB, ABGR, xBGR, RGBA, RGBx, BGR15, GRAY8, GRAY16_LE, GRAY16_BE, YVU9, YUY2, YVYU, UYVY, Y41B, YUV9, NV12_64Z32, NV12_8L128, NV12_10BE_8L128, NV24, NV12_16L32S, NV61, NV16, NV21, NV12, I420, Y42B, YV12, ARGB, xRGB, BGRA, BGRx }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-sonix:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-vp8:\nvideo/x-vp9:\nvideo/x-wmv:\n     wmvversion: 3\n         format: WVC1\n\nvideo/x-raw(format:Interlaced):\n         format: { RGB15, RGB16, BGR, RGB, ABGR, xBGR, RGBA, RGBx, BGR15, GRAY8, GRAY16_LE, GRAY16_BE, YVU9, YUY2, YVYU, UYVY, Y41B, YUV9, NV12_64Z32, NV12_8L128, NV12_10BE_8L128, NV24, NV12_16L32S, NV61, NV16, NV21, NV12, I420, Y42B, YV12, ARGB, xRGB, BGRA, BGRx }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\n interlace-mode: alternate\n",
+                        "caps": "video/x-raw(memory:DMABuf):\n         format: DMA_DRM\n     drm-format: { (string)RGB8, (string)AR15, (string)XR15, (string)XR1., (string)AR1., (string)RG16, (string)RG1., (string)RG24, (string)BG24, (string)AR24, (string)XR24, (string)RA24, (string)RX24, (string)AB24, (string)XB24, (string)BA24, (string)BX24, (string)\"R8\\ \\ \", (string)\"R4\\ \\ \", (string)\"R10\\ \", (string)\"R12\\ \", (string)\"R16\\ \", (string)R16., (string)GR88, (string)YUV9, (string)YVU9, (string)YUYV, (string)UYVY, (string)VYUY, (string)YU11, (string)NV12:0x0400000000000001, (string)NV24, (string)NV42, (string)NV61, (string)NV16, (string)NV21, (string)NV12:0x0400000000000002, (string)NV12, (string)YU16, (string)YVYU, (string)YV12, (string)YU12 }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\n\nvideo/x-raw(memory:DMABuf, format:Interlaced):\n         format: DMA_DRM\n     drm-format: { (string)RGB8, (string)AR15, (string)XR15, (string)XR1., (string)AR1., (string)RG16, (string)RG1., (string)RG24, (string)BG24, (string)AR24, (string)XR24, (string)RA24, (string)RX24, (string)AB24, (string)XB24, (string)BA24, (string)BX24, (string)\"R8\\ \\ \", (string)\"R4\\ \\ \", (string)\"R10\\ \", (string)\"R12\\ \", (string)\"R16\\ \", (string)R16., (string)GR88, (string)YUV9, (string)YVU9, (string)YUYV, (string)UYVY, (string)VYUY, (string)YU11, (string)NV12:0x0400000000000001, (string)NV24, (string)NV42, (string)NV61, (string)NV16, (string)NV21, (string)NV12:0x0400000000000002, (string)NV12, (string)YU16, (string)YVYU, (string)YV12, (string)YU12 }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\n interlace-mode: alternate\nimage/jpeg:\n         parsed: true\nvideo/mpeg:\n    mpegversion: 4\n   systemstream: false\nvideo/mpeg:\n    mpegversion: { (int)1, (int)2 }\nvideo/mpegts:\n   systemstream: true\nvideo/x-bayer:\n         format: { bggr, gbrg, grbg, rggb, bggr10le, gbrg10le, grbg10le, rggb10le, bggr12le, gbrg12le, grbg12le, rggb12le, bggr14le, gbrg14le, grbg14le, rggb14le, bggr16le, gbrg16le, grbg16le, rggb16le }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-dv:\n   systemstream: true\nvideo/x-fwht:\nvideo/x-h263:\n        variant: itu\nvideo/x-h264:\n  stream-format: { (string)byte-stream, (string)avc }\n      alignment: au\nvideo/x-h265:\n  stream-format: byte-stream\n      alignment: au\nvideo/x-pwc1:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-pwc2:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-raw:\n         format: { RGB16, BGR, RGB, ABGR, xBGR, RGBA, RGBx, BGR15, GRAY8, GRAY16_LE, GRAY16_BE, YUV9, YVU9, YUY2, YVYU, UYVY, Y41B, NV12_64Z32, NV12_8L128, NV12_10BE_8L128, NV24, NV12_16L32S, NV61, NV16, NV21, NV12, Y42B, YV12, I420, ARGB, xRGB, BGRA, BGRx, RGB15 }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-sonix:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-vp8:\nvideo/x-vp9:\nvideo/x-wmv:\n     wmvversion: 3\n         format: WVC1\n\nvideo/x-raw(format:Interlaced):\n         format: { RGB16, BGR, RGB, ABGR, xBGR, RGBA, RGBx, BGR15, GRAY8, GRAY16_LE, GRAY16_BE, YUV9, YVU9, YUY2, YVYU, UYVY, Y41B, NV12_64Z32, NV12_8L128, NV12_10BE_8L128, NV24, NV12_16L32S, NV61, NV16, NV21, NV12, Y42B, YV12, I420, ARGB, xRGB, BGRA, BGRx, RGB15 }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\n interlace-mode: alternate\n",
                         "direction": "sink",
                         "presence": "always"
                     }
@@ -26356,7 +26502,7 @@
                 "long-name": "Video (video4linux2) Source",
                 "pad-templates": {
                     "src": {
-                        "caps": "image/jpeg:\n         parsed: true\nvideo/mpeg:\n    mpegversion: 4\n   systemstream: false\nvideo/mpeg:\n    mpegversion: { (int)1, (int)2 }\nvideo/mpegts:\n   systemstream: true\nvideo/x-bayer:\n         format: { bggr, gbrg, grbg, rggb, bggr10le, gbrg10le, grbg10le, rggb10le, bggr12le, gbrg12le, grbg12le, rggb12le, bggr14le, gbrg14le, grbg14le, rggb14le, bggr16le, gbrg16le, grbg16le, rggb16le }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-dv:\n   systemstream: true\nvideo/x-fwht:\nvideo/x-h263:\n        variant: itu\nvideo/x-h264:\n  stream-format: { (string)byte-stream, (string)avc }\n      alignment: au\nvideo/x-h265:\n  stream-format: byte-stream\n      alignment: au\nvideo/x-pwc1:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-pwc2:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-raw:\n         format: { RGB15, RGB16, BGR, RGB, ABGR, xBGR, RGBA, RGBx, BGR15, GRAY8, GRAY16_LE, GRAY16_BE, YVU9, YUY2, YVYU, UYVY, Y41B, YUV9, NV12_64Z32, NV12_8L128, NV12_10BE_8L128, NV24, NV12_16L32S, NV61, NV16, NV21, NV12, I420, Y42B, YV12, ARGB, xRGB, BGRA, BGRx }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-sonix:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-vp8:\nvideo/x-vp9:\nvideo/x-wmv:\n     wmvversion: 3\n         format: WVC1\n\nvideo/x-raw(format:Interlaced):\n         format: { RGB15, RGB16, BGR, RGB, ABGR, xBGR, RGBA, RGBx, BGR15, GRAY8, GRAY16_LE, GRAY16_BE, YVU9, YUY2, YVYU, UYVY, Y41B, YUV9, NV12_64Z32, NV12_8L128, NV12_10BE_8L128, NV24, NV12_16L32S, NV61, NV16, NV21, NV12, I420, Y42B, YV12, ARGB, xRGB, BGRA, BGRx }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\n interlace-mode: alternate\n",
+                        "caps": "video/x-raw(memory:DMABuf):\n         format: DMA_DRM\n     drm-format: { (string)RGB8, (string)AR15, (string)XR15, (string)XR1., (string)AR1., (string)RG16, (string)RG1., (string)RG24, (string)BG24, (string)AR24, (string)XR24, (string)RA24, (string)RX24, (string)AB24, (string)XB24, (string)BA24, (string)BX24, (string)\"R8\\ \\ \", (string)\"R4\\ \\ \", (string)\"R10\\ \", (string)\"R12\\ \", (string)\"R16\\ \", (string)R16., (string)GR88, (string)YUV9, (string)YVU9, (string)YUYV, (string)UYVY, (string)VYUY, (string)YU11, (string)NV12:0x0400000000000001, (string)NV24, (string)NV42, (string)NV61, (string)NV16, (string)NV21, (string)NV12:0x0400000000000002, (string)NV12, (string)YU16, (string)YVYU, (string)YV12, (string)YU12 }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\n\nvideo/x-raw(memory:DMABuf, format:Interlaced):\n         format: DMA_DRM\n     drm-format: { (string)RGB8, (string)AR15, (string)XR15, (string)XR1., (string)AR1., (string)RG16, (string)RG1., (string)RG24, (string)BG24, (string)AR24, (string)XR24, (string)RA24, (string)RX24, (string)AB24, (string)XB24, (string)BA24, (string)BX24, (string)\"R8\\ \\ \", (string)\"R4\\ \\ \", (string)\"R10\\ \", (string)\"R12\\ \", (string)\"R16\\ \", (string)R16., (string)GR88, (string)YUV9, (string)YVU9, (string)YUYV, (string)UYVY, (string)VYUY, (string)YU11, (string)NV12:0x0400000000000001, (string)NV24, (string)NV42, (string)NV61, (string)NV16, (string)NV21, (string)NV12:0x0400000000000002, (string)NV12, (string)YU16, (string)YVYU, (string)YV12, (string)YU12 }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\n interlace-mode: alternate\nimage/jpeg:\n         parsed: true\nvideo/mpeg:\n    mpegversion: 4\n   systemstream: false\nvideo/mpeg:\n    mpegversion: { (int)1, (int)2 }\nvideo/mpegts:\n   systemstream: true\nvideo/x-bayer:\n         format: { bggr, gbrg, grbg, rggb, bggr10le, gbrg10le, grbg10le, rggb10le, bggr12le, gbrg12le, grbg12le, rggb12le, bggr14le, gbrg14le, grbg14le, rggb14le, bggr16le, gbrg16le, grbg16le, rggb16le }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-dv:\n   systemstream: true\nvideo/x-fwht:\nvideo/x-h263:\n        variant: itu\nvideo/x-h264:\n  stream-format: { (string)byte-stream, (string)avc }\n      alignment: au\nvideo/x-h265:\n  stream-format: byte-stream\n      alignment: au\nvideo/x-pwc1:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-pwc2:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-raw:\n         format: { RGB16, BGR, RGB, ABGR, xBGR, RGBA, RGBx, BGR15, GRAY8, GRAY16_LE, GRAY16_BE, YUV9, YVU9, YUY2, YVYU, UYVY, Y41B, NV12_64Z32, NV12_8L128, NV12_10BE_8L128, NV24, NV12_16L32S, NV61, NV16, NV21, NV12, Y42B, YV12, I420, ARGB, xRGB, BGRA, BGRx, RGB15 }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-sonix:\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\nvideo/x-vp8:\nvideo/x-vp9:\nvideo/x-wmv:\n     wmvversion: 3\n         format: WVC1\n\nvideo/x-raw(format:Interlaced):\n         format: { RGB16, BGR, RGB, ABGR, xBGR, RGBA, RGBx, BGR15, GRAY8, GRAY16_LE, GRAY16_BE, YUV9, YVU9, YUY2, YVYU, UYVY, Y41B, NV12_64Z32, NV12_8L128, NV12_10BE_8L128, NV24, NV12_16L32S, NV61, NV16, NV21, NV12, Y42B, YV12, I420, ARGB, xRGB, BGRA, BGRx, RGB15 }\n          width: [ 1, 32768 ]\n         height: [ 1, 32768 ]\n      framerate: [ 0/1, 2147483647/1 ]\n interlace-mode: alternate\n",
                         "direction": "src",
                         "presence": "always"
                     }

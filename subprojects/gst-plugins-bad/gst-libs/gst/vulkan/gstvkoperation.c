@@ -23,6 +23,9 @@
 #endif
 
 #include "gstvkoperation.h"
+#if GST_VULKAN_HAVE_VIDEO_EXTENSIONS
+# include "gstvkvideo-private.h"
+#endif
 
 /**
  * SECTION:vkoperation
@@ -57,6 +60,9 @@ struct _GstVulkanOperationPrivate
 
   VkQueryPool query_pool;
   VkQueryType query_type;
+#if defined(VK_KHR_video_maintenance1)
+  VkVideoInlineQueryInfoKHR inline_query;
+#endif
   guint n_queries;
   gsize query_data_size;
   gsize query_data_stride;
@@ -66,6 +72,8 @@ struct _GstVulkanOperationPrivate
   gboolean has_sync2;
   gboolean has_video;
   gboolean has_timeline;
+  gboolean has_video_maintenance1;
+  gboolean use_inline_query;
 
   GArray *barriers;
 
@@ -140,6 +148,8 @@ gst_vulkan_operation_get_property (GObject * object, guint prop_id,
   }
 }
 
+
+
 static void
 gst_vulkan_operation_constructed (GObject * object)
 {
@@ -179,8 +189,8 @@ gst_vulkan_operation_constructed (GObject * object)
 #if GST_VULKAN_HAVE_VIDEO_EXTENSIONS
   priv->has_video = gst_vulkan_device_is_extension_enabled (device,
       VK_KHR_VIDEO_QUEUE_EXTENSION_NAME);
+  priv->has_video_maintenance1 = gst_vulkan_video_has_maintenance1 (device);
 #endif
-
 #if defined(VK_KHR_timeline_semaphore)
   priv->has_timeline = gst_vulkan_device_is_extension_enabled (device,
       VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
@@ -726,7 +736,7 @@ _get_image_barriers_unlocked (GstVulkanOperation * self)
 }
 
 /**
- * gst_vulkan_operation_retrieve_image_barriers:
+ * gst_vulkan_operation_retrieve_image_barriers: (skip)
  * @self: a #GstVulkanOperation
  *
  * Retrieves a copy of the current defined barriers internally, which will be
@@ -735,7 +745,9 @@ _get_image_barriers_unlocked (GstVulkanOperation * self)
  * The element type of the array might be, depending on if synchronization2
  * extension is used, either VkImageMemoryBarrier or VkImageMemoryBarrier2KHR.
  *
- * Returns: (transfer full): Current barriers array. Call g_array_unref() after
+ * Returns: (transfer full): Current barriers #GArray, either
+ *    VkImageMemoryBarrier or VkImageMemoryBarrier2KHR, depending whether
+ *    synchronization2 extension is used. Call g_array_unref() after
  *    the operation is using.
  */
 GArray *
@@ -751,7 +763,7 @@ gst_vulkan_operation_retrieve_image_barriers (GstVulkanOperation * self)
 }
 
 /**
- * gst_vulkan_operation_new_extra_image_barriers:
+ * gst_vulkan_operation_new_extra_image_barriers: (skip)
  * @self: a #GstVulkanOperation
  *
  * See also: gst_vulkan_operation_use_sync2(),
@@ -765,7 +777,7 @@ gst_vulkan_operation_retrieve_image_barriers (GstVulkanOperation * self)
  * Remember to call gst_vulkan_operation_update_frame() after adding the barrier
  * related with that frame.
  *
- * Returns: (transfer full): A new allocated array of barriers, either
+ * Returns: (transfer full): A new allocated #GArray of barriers, either
  *     VkImageMemoryBarrier or VkImageMemoryBarrier2KHR, depending whether
  *     synchronization2 extension is used.
  */
@@ -776,9 +788,9 @@ gst_vulkan_operation_new_extra_image_barriers (GstVulkanOperation * self)
 }
 
 /**
- * gst_vulkan_operation_add_extra_image_barriers:
+ * gst_vulkan_operation_add_extra_image_barriers: (skip)
  * @self: a #GstVulkanOperation
- * @extra_barriers: a #GArray of extra image memory barriers to handle, either
+ * @extra_barriers: (transfer none): a #GArray of extra image memory barriers to handle, either
  * VkImageMemoryBarrier or VkImageMemoryBarrier2KHR, depending whether
  * synchronization2 extension is used.
  *
@@ -1243,6 +1255,18 @@ gst_vulkan_operation_enable_query (GstVulkanOperation * self,
         priv->cmd_pool->queue);
     return FALSE;
   }
+
+  if ((query_type == VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR
+          || query_type == VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR)
+      && priv->has_video && priv->has_video_maintenance1) {
+    VkBaseInStructure *base;
+    for (base = pnext; base; base = (VkBaseInStructure *) base->pNext) {
+      if (base->sType == VK_STRUCTURE_TYPE_VIDEO_PROFILE_INFO_KHR) {
+        priv->use_inline_query = TRUE;
+        break;
+      }
+    }
+  }
 #endif
 
   res = vkCreateQueryPool (priv->cmd_pool->queue->device->device,
@@ -1335,14 +1359,21 @@ gst_vulkan_operation_get_query (GstVulkanOperation * self, gpointer * result,
 /**
  * gst_vulkan_operation_begin_query:
  * @self: a #GstVulkanOperation
+ * @base: a VkBaseInStructure base
  * @id: query id
  *
- * Begins a query operation with @id in the current command buffer.
+ * Begins a query operation with @id in the current command buffer. If video maintenance1 extension
+ * is available the query will be recorded as a video inline query. If NULL is passed to @base,
+ * the query will be recorded as a normal query anyway.
  *
  * Returns: whether the begin command was set
+ *
+ * Since: 1.26
+ *
  */
 gboolean
-gst_vulkan_operation_begin_query (GstVulkanOperation * self, guint32 id)
+gst_vulkan_operation_begin_query (GstVulkanOperation * self,
+    VkBaseInStructure * base, guint32 id)
 {
   GstVulkanOperationPrivate *priv;
 
@@ -1356,6 +1387,26 @@ gst_vulkan_operation_begin_query (GstVulkanOperation * self, guint32 id)
     GST_INFO_OBJECT (self, "Cannot begin query without begin operation");
     return FALSE;
   }
+
+  if (priv->use_inline_query)
+    g_return_val_if_fail (base, FALSE);
+
+#if defined(VK_KHR_video_maintenance1)
+  if (priv->use_inline_query) {
+    /* *INDENT-OFF* */
+    priv->inline_query = (VkVideoInlineQueryInfoKHR) {
+      .sType = VK_STRUCTURE_TYPE_VIDEO_INLINE_QUERY_INFO_KHR,
+      .pNext = base->pNext,
+      .queryPool = priv->query_pool,
+      .firstQuery = id,
+      .queryCount = 1,
+    };
+    /* *INDENT-ON* */
+    base->pNext = (VkBaseInStructure *) & priv->inline_query;
+
+    return TRUE;
+  }
+#endif
 
   gst_vulkan_command_buffer_lock (self->cmd_buf);
   vkCmdBeginQuery (self->cmd_buf->cmd, priv->query_pool, id, 0);
@@ -1389,6 +1440,9 @@ gst_vulkan_operation_end_query (GstVulkanOperation * self, guint32 id)
     GST_INFO_OBJECT (self, "Cannot end query without begin operation");
     return FALSE;
   }
+
+  if (priv->use_inline_query)
+    return TRUE;
 
   gst_vulkan_command_buffer_lock (self->cmd_buf);
   vkCmdEndQuery (self->cmd_buf->cmd, priv->query_pool, id);

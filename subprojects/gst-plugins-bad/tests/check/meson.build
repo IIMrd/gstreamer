@@ -16,8 +16,7 @@ exif_dep = dependency('libexif', version : '>= 0.6.16', required : false)
 nalutils_dep = gstcodecparsers_dep.partial_dependency (compile_args: true, includes: true)
 
 enable_gst_play_tests = get_option('gst_play_tests')
-libsoup_dep = dependency('libsoup-2.4', version : '>=2.48', required : enable_gst_play_tests,
-  fallback : ['libsoup', 'libsoup_dep'])
+libsoup_dep = dependency('libsoup-2.4', version: '>=2.48', required: enable_gst_play_tests)
 
 # name, condition when to skip the test and extra dependencies
 base_tests = [
@@ -82,6 +81,7 @@ base_tests = [
   [['elements/wasapi2.c'], host_machine.system() != 'windows', ],
   [['libs/h264parser.c'], false, [gstcodecparsers_dep]],
   [['libs/h265parser.c'], false, [gstcodecparsers_dep]],
+  [['libs/h266parser.c'], false, [gstcodecparsers_dep]],
   [['libs/insertbin.c'], false, [gstinsertbin_dep]],
   [['libs/isoff.c'], false, [gstisoff_dep]],
   [['libs/nalutils.c', '../../gst-libs/gst/codecparsers/nalutils.c'], false, [nalutils_dep]],

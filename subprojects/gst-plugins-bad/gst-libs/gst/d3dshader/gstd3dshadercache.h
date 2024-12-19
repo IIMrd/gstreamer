@@ -52,6 +52,11 @@ typedef enum
 typedef enum
 {
   GST_D3D_PLUGIN_CS_MIP_GEN,
+  GST_D3D_PLUGIN_CS_YADIF_1,
+  GST_D3D_PLUGIN_CS_YADIF_1_10,
+  GST_D3D_PLUGIN_CS_YADIF_1_12,
+  GST_D3D_PLUGIN_CS_YADIF_2,
+  GST_D3D_PLUGIN_CS_YADIF_4,
 
   GST_D3D_PLUGIN_CS_LAST,
 } GstD3DPluginCS;
@@ -124,11 +129,15 @@ gboolean gst_d3d_converter_shader_get_cs_blob (GstVideoFormat in_format,
 
 GST_D3D_SHADER_API
 guint   gst_d3d_converter_shader_get_ps_blob (GstVideoFormat in_format,
-                                               GstVideoFormat out_format,
-                                               gboolean in_premul,
-                                               gboolean out_premul,
-                                               GstD3DConverterType conv_type,
-                                               GstD3DShaderModel shader_model,
-                                               GstD3DConverterPSByteCode byte_code[4]);
+                                              GstVideoFormat out_format,
+                                              gboolean in_premul,
+                                              gboolean out_premul,
+                                              GstD3DConverterType conv_type,
+                                              GstD3DShaderModel shader_model,
+                                              GstD3DConverterPSByteCode byte_code[4]);
+
+GST_D3D_SHADER_API
+gboolean gst_d3d12_shader_cache_get_gamma_lut_blob (GstD3DShaderByteCode * vs_blob,
+                                                    GstD3DShaderByteCode * ps_blob);
 
 G_END_DECLS

@@ -687,8 +687,7 @@ static void splitmux_part_reader_finalize (GObject * object);
 static void splitmux_part_reader_reset (GstSplitMuxPartReader * reader);
 
 #define gst_splitmux_part_reader_parent_class parent_class
-G_DEFINE_TYPE (GstSplitMuxPartReader, gst_splitmux_part_reader,
-    GST_TYPE_PIPELINE);
+G_DEFINE_TYPE (GstSplitMuxPartReader, gst_splitmux_part_reader, GST_TYPE_BIN);
 
 static void
 gst_splitmux_part_reader_class_init (GstSplitMuxPartReaderClass * klass)
@@ -745,6 +744,8 @@ create_elements (GstSplitMuxPartReader * reader)
 static void
 gst_splitmux_part_reader_init (GstSplitMuxPartReader * reader)
 {
+  GstBus *bus;
+
   reader->prep_state = PART_STATE_NULL;
   reader->need_duration_measuring = TRUE;
 
@@ -759,6 +760,10 @@ gst_splitmux_part_reader_init (GstSplitMuxPartReader * reader)
   g_mutex_init (&reader->lock);
   g_mutex_init (&reader->type_lock);
   g_mutex_init (&reader->msg_lock);
+
+  bus = g_object_new (GST_TYPE_BUS, "enable-async", FALSE, NULL);
+  gst_element_set_bus (GST_ELEMENT_CAST (reader), bus);
+  gst_object_unref (bus);
 }
 
 static void
@@ -1452,6 +1457,14 @@ gst_splitmux_part_reader_set_start_offset (GstSplitMuxPartReader * reader,
   reader->ts_offset = ts_offset;
   GST_INFO_OBJECT (reader, "Time offset now %" GST_TIME_FORMAT,
       GST_TIME_ARGS (time_offset));
+
+  if (!reader->need_duration_measuring
+      && reader->info.start_offset != GST_CLOCK_TIME_NONE) {
+    reader->end_offset = reader->info.start_offset + reader->info.duration;
+    GST_INFO_OBJECT (reader, "End offset set to %" GST_TIME_FORMAT,
+        GST_TIME_ARGS (reader->end_offset));
+  }
+
   SPLITMUX_PART_UNLOCK (reader);
 }
 
@@ -1465,6 +1478,14 @@ gst_splitmux_part_reader_set_duration (GstSplitMuxPartReader * reader,
 
   GST_INFO_OBJECT (reader, "Duration manually set to %" GST_TIME_FORMAT,
       GST_TIME_ARGS (duration));
+
+  if (!reader->need_duration_measuring
+      && reader->info.start_offset != GST_CLOCK_TIME_NONE) {
+    reader->end_offset = reader->info.start_offset + reader->info.duration;
+    GST_INFO_OBJECT (reader, "End offset set to %" GST_TIME_FORMAT,
+        GST_TIME_ARGS (reader->end_offset));
+  }
+
   SPLITMUX_PART_UNLOCK (reader);
 }
 

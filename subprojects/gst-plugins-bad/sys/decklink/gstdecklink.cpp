@@ -127,6 +127,23 @@ gst_decklink_mode_get_type (void)
     {GST_DECKLINK_MODE_8Kp5994, "8k dci 59.94p", "8kdcip5994"},
     {GST_DECKLINK_MODE_8Kp60, "8k dci 60p", "8kdcip60"},
 
+    {GST_DECKLINK_MODE_640x480p60, "640x480 60p", "640x480p60"},
+    {GST_DECKLINK_MODE_800x600p60, "800x600 60p", "800x600p60"},
+    {GST_DECKLINK_MODE_1440x900p50, "1440x900 50p", "1440x900p50"},
+    {GST_DECKLINK_MODE_1440x900p60, "1440x900 60p", "1440x900p60"},
+    {GST_DECKLINK_MODE_1440x1080p50, "1440x1080 50p", "1440x1080p50"},
+    {GST_DECKLINK_MODE_1440x1080p60, "1440x1080 60p", "1440x1080p60"},
+    {GST_DECKLINK_MODE_1600x1200p50, "1600x1200 50p", "1600x1200p50"},
+    {GST_DECKLINK_MODE_1600x1200p60, "1600x1200 60p", "1600x1200p60"},
+    {GST_DECKLINK_MODE_1920x1200p50, "1920x1200 50p", "1920x1200p50"},
+    {GST_DECKLINK_MODE_1920x1200p60, "1920x1200 60p", "1920x1200p60"},
+    {GST_DECKLINK_MODE_1920x1440p50, "1920x1440 50p", "1920x1440p50"},
+    {GST_DECKLINK_MODE_1920x1440p60, "1920x1440 60p", "1920x1440p60"},
+    {GST_DECKLINK_MODE_2560x1440p50, "2560x1440 50p", "2560x1440p50"},
+    {GST_DECKLINK_MODE_2560x1440p60, "2560x1440 60p", "2560x1440p60"},
+    {GST_DECKLINK_MODE_2560x1600p50, "2560x1600 50p", "2560x1600p50"},
+    {GST_DECKLINK_MODE_2560x1600p60, "2560x1600 60p", "2560x1600p60"},
+
     {0, NULL, NULL}
   };
 
@@ -708,28 +725,28 @@ gst_decklink_get_mode_enum_from_bmd (BMDDisplayMode mode)
       displayMode = GST_DECKLINK_MODE_4320p60;
       break;
     case bmdMode8kDCI2398:
-      displayMode = GST_DECKLINK_MODE_4Kp2398;
+      displayMode = GST_DECKLINK_MODE_8Kp2398;
       break;
     case bmdMode8kDCI24:
-      displayMode = GST_DECKLINK_MODE_4Kp24;
+      displayMode = GST_DECKLINK_MODE_8Kp24;
       break;
     case bmdMode8kDCI25:
-      displayMode = GST_DECKLINK_MODE_4Kp25;
+      displayMode = GST_DECKLINK_MODE_8Kp25;
       break;
     case bmdMode8kDCI2997:
-      displayMode = GST_DECKLINK_MODE_4Kp2997;
+      displayMode = GST_DECKLINK_MODE_8Kp2997;
       break;
     case bmdMode8kDCI30:
-      displayMode = GST_DECKLINK_MODE_4Kp30;
+      displayMode = GST_DECKLINK_MODE_8Kp30;
       break;
     case bmdMode8kDCI50:
-      displayMode = GST_DECKLINK_MODE_4Kp50;
+      displayMode = GST_DECKLINK_MODE_8Kp50;
       break;
     case bmdMode8kDCI5994:
-      displayMode = GST_DECKLINK_MODE_4Kp5994;
+      displayMode = GST_DECKLINK_MODE_8Kp5994;
       break;
     case bmdMode8kDCI60:
-      displayMode = GST_DECKLINK_MODE_4Kp60;
+      displayMode = GST_DECKLINK_MODE_8Kp60;
       break;
     case bmdMode640x480p60:
       displayMode = GST_DECKLINK_MODE_640x480p60;

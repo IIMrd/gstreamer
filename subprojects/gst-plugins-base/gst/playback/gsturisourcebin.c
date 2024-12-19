@@ -724,6 +724,24 @@ gst_uri_source_bin_get_property (GObject * object, guint prop_id,
   }
 }
 
+static GstEvent *
+add_stream_start_custom_flag (GstEvent ** event)
+{
+  GstStructure *s;
+  /* This is a temporary hack to notify downstream decodebin3 to *not*
+   * plug in an extra parsebin */
+  s = (GstStructure *) gst_event_get_structure (*event);
+  if (!gst_structure_has_field_typed (s, "urisourcebin-parsed-data",
+          G_TYPE_BOOLEAN)) {
+    *event = gst_event_make_writable (*event);
+    s = (GstStructure *) gst_event_get_structure (*event);
+    gst_structure_set (s, "urisourcebin-parsed-data", G_TYPE_BOOLEAN, TRUE,
+        NULL);
+  }
+
+  return *event;
+}
+
 typedef struct
 {
   GstPad *target_pad;
@@ -738,13 +756,7 @@ copy_sticky_events (GstPad * pad, GstEvent ** event, gpointer user_data)
 
   if (data->rewrite_stream_start &&
       GST_EVENT_TYPE (*event) == GST_EVENT_STREAM_START) {
-    GstStructure *s;
-    /* This is a temporary hack to notify downstream decodebin3 to *not*
-     * plug in an extra parsebin */
-    *event = gst_event_make_writable (*event);
-    s = (GstStructure *) gst_event_get_structure (*event);
-    gst_structure_set (s, "urisourcebin-parsed-data", G_TYPE_BOOLEAN, TRUE,
-        NULL);
+    add_stream_start_custom_flag (event);
   }
   GST_DEBUG_OBJECT (gpad,
       "store sticky event from %" GST_PTR_FORMAT " %" GST_PTR_FORMAT, pad,
@@ -977,11 +989,7 @@ demux_pad_events (GstPad * pad, GstPadProbeInfo * info, OutputSlotInfo * slot)
        * plug in an extra parsebin */
       if (urisrc->is_adaptive || (slot->linked_info
               && slot->linked_info->demuxer_is_parsebin)) {
-        GstStructure *s;
-        GST_PAD_PROBE_INFO_DATA (info) = ev = gst_event_make_writable (ev);
-        s = (GstStructure *) gst_event_get_structure (ev);
-        gst_structure_set (s, "urisourcebin-parsed-data", G_TYPE_BOOLEAN, TRUE,
-            NULL);
+        GST_PAD_PROBE_INFO_DATA (info) = add_stream_start_custom_flag (&ev);
       }
     }
       /* PASSTHROUGH */
@@ -2892,6 +2900,7 @@ handle_parsebin_collection (ChildSrcPadInfo * info,
 {
   GList *unused_slots = NULL, *iter;
   GList *streams = NULL;
+  GList *unused_streams = NULL;
   guint i, nb_streams;
 
   nb_streams = gst_stream_collection_get_size (collection);
@@ -2900,33 +2909,54 @@ handle_parsebin_collection (ChildSrcPadInfo * info,
         g_list_append (streams, gst_stream_collection_get_stream (collection,
             i));
 
+  unused_streams = g_list_copy (streams);
+
   /* Get list of output info slots not present in the collection */
   for (iter = info->outputs; iter; iter = iter->next) {
     OutputSlotInfo *output = iter->data;
 
-    if (output->stream
-        && !gst_playback_utils_stream_in_list (streams, output->stream)) {
+    if (!output->stream)
+      continue;
+
+    if (!gst_playback_utils_stream_in_list (streams, output->stream)) {
       GST_DEBUG_OBJECT (output->originating_pad,
           "No longer used in new collection");
       unused_slots = g_list_append (unused_slots, output);
+    } else {
+      GList *iter2 = unused_streams;
+      /* Stream is re-used, remove it from unused streams we will try to
+       * re-assign further down */
+      for (iter2 = unused_streams; iter2; iter2 = iter2->next) {
+        GstStream *stream = iter2->data;
+        if (!g_strcmp0 (output->stream->stream_id, stream->stream_id)) {
+          /* Replace the pending stream by the incoming stream */
+          gst_object_replace ((GstObject **) & output->pending_stream,
+              (GstObject *) stream);
+          unused_streams = g_list_remove (unused_streams, stream);
+          break;
+        }
+      }
     }
   }
 
-  /* For each of those slots, check if there is a compatible stream from the
-   * collection that could be assigned to it */
+  /* For each of those slots, check if there is a unused compatible stream from
+   * the collection that could be assigned to it */
   for (iter = unused_slots; iter; iter = iter->next) {
     OutputSlotInfo *output = iter->data;
-    GstStream *replacement = find_compatible_stream (streams, output->stream);
+    GstStream *replacement =
+        find_compatible_stream (unused_streams, output->stream);
     if (replacement) {
       GST_DEBUG_OBJECT (output->originating_pad, "Assigning stream %s",
           gst_stream_get_stream_id (replacement));
-      output->pending_stream = gst_object_ref (replacement);
-      streams = g_list_remove (streams, replacement);
+      gst_object_replace ((GstObject **) & output->pending_stream,
+          (GstObject *) replacement);
+      unused_streams = g_list_remove (unused_streams, replacement);
     }
   }
 
   g_list_free (unused_slots);
   g_list_free (streams);
+  g_list_free (unused_streams);
 
   /* Store the collection */
   gst_object_replace ((GstObject **) & info->collection,
@@ -3050,6 +3080,10 @@ handle_message (GstBin * bin, GstMessage * msg)
               msg =
                   gst_message_new_stream_collection ((GstObject *) urisrc,
                   aggregated);
+            }
+            if (aggregated) {
+              /* Remove ref obtained from aggregate_collection() */
+              gst_object_unref (aggregated);
             }
             gst_object_unref (collection);
           }

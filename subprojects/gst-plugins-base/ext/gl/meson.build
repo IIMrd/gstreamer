@@ -93,6 +93,12 @@ if png_dep.found()
   endif
 endif
 
+if glconf.get('GST_GL_HAVE_DMABUF', 0) == 1
+  opengl_sources += [
+    'gstgldmabufbufferpool.c',
+  ]
+endif
+
 if glconf.get('GST_GL_HAVE_WINDOW_COCOA', 0) == 1
   corefoundation_dep = dependency('appleframeworks', modules : ['CoreFoundation'], required : false)
   foundation_dep = dependency('appleframeworks', modules : ['Foundation'], required : false)
@@ -114,7 +120,13 @@ if bcm_host_dep.found()
   optional_deps += bcm_host_dep
 endif
 
-if egl_dep.found() and cc.has_header('drm_fourcc.h', dependencies: libdrm_dep)
+if libdrm_dep.type_name() == 'internal'
+  drm_has_fourcc = true
+else
+  drm_has_fourcc = cc.has_header('drm_fourcc.h', dependencies: libdrm_dep)
+endif
+
+if egl_dep.found() and drm_has_fourcc
   optional_deps += [allocators_dep, libdrm_dep]
 endif
 

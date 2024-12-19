@@ -32,6 +32,7 @@
 #if GST_GL_HAVE_PLATFORM_EGL
 #include "egl/gsteglimage.h"
 #include "egl/gsteglimage_private.h"
+#include "egl/gsteglimagecache.h"
 #include "egl/gstglmemoryegl.h"
 #include "egl/gstglcontext_egl.h"
 #endif
@@ -717,24 +718,6 @@ static const UploadMethod _gl_memory_upload = {
 
 #if GST_GL_HAVE_DMABUF
 
-typedef enum
-{
-  INCLUDE_EXTERNAL = 1 << 1,
-  LINEAR_ONLY = 2 << 1,
-} GstGLUploadDrmFormatFlags;
-
-typedef struct _GstEGLImageCacheEntry
-{
-  GstEGLImage *eglimage[GST_VIDEO_MAX_PLANES];
-} GstEGLImageCacheEntry;
-
-typedef struct _GstEGLImageCache
-{
-  gint ref_count;
-  GHashTable *hash_table;       /* for GstMemory -> GstEGLImageCacheEntry lookup */
-  GMutex lock;                  /* protects hash_table */
-} GstEGLImageCache;
-
 struct DmabufUpload
 {
   GstGLUpload *upload;
@@ -753,112 +736,6 @@ struct DmabufUpload
   gpointer out_caps;
 };
 
-static void
-gst_egl_image_cache_ref (GstEGLImageCache * cache)
-{
-  g_atomic_int_inc (&cache->ref_count);
-}
-
-static void
-gst_egl_image_cache_unref (GstEGLImageCache * cache)
-{
-  if (g_atomic_int_dec_and_test (&cache->ref_count)) {
-    g_hash_table_unref (cache->hash_table);
-    g_mutex_clear (&cache->lock);
-    g_free (cache);
-  }
-}
-
-static void
-gst_egl_image_cache_entry_remove (GstEGLImageCache * cache, GstMiniObject * mem)
-{
-  g_mutex_lock (&cache->lock);
-  g_hash_table_remove (cache->hash_table, mem);
-  g_mutex_unlock (&cache->lock);
-  gst_egl_image_cache_unref (cache);
-}
-
-static GstEGLImageCacheEntry *
-gst_egl_image_cache_entry_new (GstEGLImageCache * cache, GstMemory * mem)
-{
-  GstEGLImageCacheEntry *cache_entry;
-
-  cache_entry = g_new0 (GstEGLImageCacheEntry, 1);
-  gst_egl_image_cache_ref (cache);
-  gst_mini_object_weak_ref (GST_MINI_OBJECT (mem),
-      (GstMiniObjectNotify) gst_egl_image_cache_entry_remove, cache);
-  g_mutex_lock (&cache->lock);
-  g_hash_table_insert (cache->hash_table, mem, cache_entry);
-  g_mutex_unlock (&cache->lock);
-
-  return cache_entry;
-}
-
-static void
-gst_egl_image_cache_entry_free (GstEGLImageCacheEntry * cache_entry)
-{
-  gint i;
-
-  for (i = 0; i < GST_VIDEO_MAX_PLANES; i++) {
-    if (cache_entry->eglimage[i])
-      gst_egl_image_unref (cache_entry->eglimage[i]);
-  }
-  g_free (cache_entry);
-}
-
-/*
- * Looks up a cache_entry for mem if mem is different from previous_mem.
- * If mem is the same as previous_mem, the costly lookup is skipped and the
- * provided (previous) cache_entry is used instead.
- *
- * Returns the cached eglimage for the given plane from the cache_entry, or
- * NULL. previous_mem is set to mem.
- */
-static GstEGLImage *
-gst_egl_image_cache_lookup (GstEGLImageCache * cache, GstMemory * mem,
-    gint plane, GstMemory ** previous_mem, GstEGLImageCacheEntry ** cache_entry)
-{
-  if (mem != *previous_mem) {
-    g_mutex_lock (&cache->lock);
-    *cache_entry = g_hash_table_lookup (cache->hash_table, mem);
-    g_mutex_unlock (&cache->lock);
-    *previous_mem = mem;
-  }
-
-  if (*cache_entry)
-    return (*cache_entry)->eglimage[plane];
-
-  return NULL;
-}
-
-/*
- * Creates a new cache_entry for mem if no cache_entry is provided.
- * Stores the eglimage for the given plane in the cache_entry.
- */
-static void
-gst_egl_image_cache_store (GstEGLImageCache * cache, GstMemory * mem,
-    gint plane, GstEGLImage * eglimage, GstEGLImageCacheEntry ** cache_entry)
-{
-  if (!(*cache_entry))
-    *cache_entry = gst_egl_image_cache_entry_new (cache, mem);
-  (*cache_entry)->eglimage[plane] = eglimage;
-}
-
-static GstEGLImageCache *
-gst_egl_image_cache_new (void)
-{
-  GstEGLImageCache *cache;
-
-  cache = g_new0 (GstEGLImageCache, 1);
-  cache->ref_count = 1;
-
-  cache->hash_table = g_hash_table_new_full (g_direct_hash, g_direct_equal,
-      NULL, (GDestroyNotify) gst_egl_image_cache_entry_free);
-  g_mutex_init (&cache->lock);
-
-  return cache;
-}
-
 static GstStaticCaps _dma_buf_upload_caps =
     GST_STATIC_CAPS (GST_VIDEO_DMA_DRM_CAPS_MAKE ";"
     GST_VIDEO_CAPS_MAKE (GST_GL_MEMORY_VIDEO_FORMATS_STR));
@@ -873,142 +750,6 @@ _dma_buf_upload_new (GstGLUpload * upload)
   return dmabuf;
 }
 
-/* Append all drm format strings to drm_formats array. */
-static void
-_append_drm_formats_from_video_format (GstGLContext * context,
-    GstVideoFormat format, GstGLUploadDrmFormatFlags flags,
-    GPtrArray * drm_formats)
-{
-  gint32 i, fourcc;
-  const GArray *dma_modifiers = NULL;
-  char *drm_format;
-
-  fourcc = gst_video_dma_drm_fourcc_from_format (format);
-  if (fourcc == DRM_FORMAT_INVALID)
-    return;
-
-  if (!gst_gl_context_egl_get_format_modifiers (context, fourcc,
-          &dma_modifiers))
-    return;
-
-  /* No modifier info, lets warn and move on */
-  if (!dma_modifiers) {
-    GST_WARNING_OBJECT (context, "Undefined modifiers list for %"
-        GST_FOURCC_FORMAT, GST_FOURCC_ARGS (fourcc));
-    return;
-  }
-
-  for (i = 0; i < dma_modifiers->len; i++) {
-    GstGLDmaModifier *mod = &g_array_index (dma_modifiers, GstGLDmaModifier, i);
-
-    if (!(flags & INCLUDE_EXTERNAL) && mod->external_only)
-      continue;
-
-    if (flags & LINEAR_ONLY && mod->modifier != DRM_FORMAT_MOD_LINEAR)
-      continue;
-
-    drm_format = gst_video_dma_drm_fourcc_to_string (fourcc, mod->modifier);
-    g_ptr_array_add (drm_formats, drm_format);
-  }
-}
-
-/* Given the video formats in src GValue, collecting all the according
-   drm formats to dst GValue. Return FALSE if no valid drm formats found. */
-static gboolean
-_dma_buf_transform_gst_formats_to_drm_formats (GstGLContext * context,
-    const GValue * video_value, GstGLUploadDrmFormatFlags flags,
-    GValue * drm_value)
-{
-  GstVideoFormat gst_format;
-  GPtrArray *all_drm_formats = NULL;
-  guint i;
-
-  all_drm_formats = g_ptr_array_new ();
-
-  if (G_VALUE_HOLDS_STRING (video_value)) {
-    gst_format =
-        gst_video_format_from_string (g_value_get_string (video_value));
-    if (gst_format != GST_VIDEO_FORMAT_UNKNOWN) {
-      _append_drm_formats_from_video_format (context, gst_format,
-          flags, all_drm_formats);
-    }
-  } else if (GST_VALUE_HOLDS_LIST (video_value)) {
-    guint num_values = gst_value_list_get_size (video_value);
-
-    for (i = 0; i < num_values; i++) {
-      const GValue *val = gst_value_list_get_value (video_value, i);
-
-      gst_format = gst_video_format_from_string (g_value_get_string (val));
-      if (gst_format == GST_VIDEO_FORMAT_UNKNOWN)
-        continue;
-
-      _append_drm_formats_from_video_format (context, gst_format,
-          flags, all_drm_formats);
-    }
-  }
-
-  if (all_drm_formats->len == 0) {
-    g_ptr_array_unref (all_drm_formats);
-    return FALSE;
-  }
-
-  if (all_drm_formats->len == 1) {
-    g_value_init (drm_value, G_TYPE_STRING);
-    g_value_take_string (drm_value, g_ptr_array_index (all_drm_formats, 0));
-  } else {
-    GValue item = G_VALUE_INIT;
-
-    gst_value_list_init (drm_value, all_drm_formats->len);
-
-    for (i = 0; i < all_drm_formats->len; i++) {
-      g_value_init (&item, G_TYPE_STRING);
-      g_value_take_string (&item, g_ptr_array_index (all_drm_formats, i));
-      gst_value_list_append_value (drm_value, &item);
-      g_value_unset (&item);
-    }
-  }
-
-  /* The strings are already token by the GValue, no need to free. */
-  g_ptr_array_unref (all_drm_formats);
-
-  return TRUE;
-}
-
-static gboolean
-_check_modifier (GstGLContext * context, guint32 fourcc,
-    guint64 modifier, gboolean include_external)
-{
-  const GArray *dma_modifiers;
-  guint i;
-
-  /* If no context provide, no further check. */
-  if (!context)
-    return TRUE;
-
-  if (!gst_gl_context_egl_get_format_modifiers (context, fourcc,
-          &dma_modifiers))
-    return FALSE;
-
-  if (!dma_modifiers) {
-    /* recognize the fourcc but no modifier info, consider it as linear */
-    if (modifier == DRM_FORMAT_MOD_LINEAR)
-      return TRUE;
-
-    return FALSE;
-  }
-
-  for (i = 0; i < dma_modifiers->len; i++) {
-    GstGLDmaModifier *mod = &g_array_index (dma_modifiers, GstGLDmaModifier, i);
-
-    if (!mod->external_only || include_external) {
-      if (mod->modifier == modifier)
-        return TRUE;
-    }
-  }
-
-  return FALSE;
-}
-
 static void
 _set_default_formats_list (GstStructure * structure)
 {
@@ -1019,97 +760,10 @@ _set_default_formats_list (GstStructure * structure)
   gst_structure_take_value (structure, "format", &formats);
 }
 
-static GstVideoFormat
-_get_video_format_from_drm_format (GstGLContext * context,
-    const gchar * drm_format, GstGLUploadDrmFormatFlags flags)
-{
-  GstVideoFormat gst_format;
-  guint32 fourcc;
-  guint64 modifier;
-
-  fourcc = gst_video_dma_drm_fourcc_from_string (drm_format, &modifier);
-  if (fourcc == DRM_FORMAT_INVALID)
-    return GST_VIDEO_FORMAT_UNKNOWN;
-
-  if (flags & LINEAR_ONLY && modifier != DRM_FORMAT_MOD_LINEAR)
-    return GST_VIDEO_FORMAT_UNKNOWN;
-
-  gst_format = gst_video_dma_drm_fourcc_to_format (fourcc);
-  if (gst_format == GST_VIDEO_FORMAT_UNKNOWN)
-    return GST_VIDEO_FORMAT_UNKNOWN;
-
-  if (!_check_modifier (context, fourcc, modifier, flags & INCLUDE_EXTERNAL))
-    return GST_VIDEO_FORMAT_UNKNOWN;
-
-  return gst_format;
-}
-
-/* Given the drm formats in src GValue, collecting all the according
-   gst formats to dst GValue. Return FALSE if no valid drm formats found. */
-static gboolean
-_dma_buf_transform_drm_formats_to_gst_formats (GstGLContext * context,
-    const GValue * drm_value, GstGLUploadDrmFormatFlags flags,
-    GValue * video_value)
-{
-  GstVideoFormat gst_format;
-  GArray *all_formats = NULL;
-  guint i;
-
-  all_formats = g_array_new (FALSE, FALSE, sizeof (GstVideoFormat));
-
-  if (G_VALUE_HOLDS_STRING (drm_value)) {
-    gst_format = _get_video_format_from_drm_format (context,
-        g_value_get_string (drm_value), flags);
-
-    if (gst_format != GST_VIDEO_FORMAT_UNKNOWN)
-      g_array_append_val (all_formats, gst_format);
-  } else if (GST_VALUE_HOLDS_LIST (drm_value)) {
-    guint num_values = gst_value_list_get_size (drm_value);
-
-    for (i = 0; i < num_values; i++) {
-      const GValue *val = gst_value_list_get_value (drm_value, i);
-
-      gst_format = _get_video_format_from_drm_format (context,
-          g_value_get_string (val), flags);
-      if (gst_format == GST_VIDEO_FORMAT_UNKNOWN)
-        continue;
-
-      g_array_append_val (all_formats, gst_format);
-    }
-  }
-
-  if (all_formats->len == 0) {
-    g_array_unref (all_formats);
-    return FALSE;
-  }
-
-  if (all_formats->len == 1) {
-    g_value_init (video_value, G_TYPE_STRING);
-    gst_format = g_array_index (all_formats, GstVideoFormat, 0);
-    g_value_set_string (video_value, gst_video_format_to_string (gst_format));
-  } else {
-    GValue item = G_VALUE_INIT;
-
-    gst_value_list_init (video_value, all_formats->len);
-
-    for (i = 0; i < all_formats->len; i++) {
-      g_value_init (&item, G_TYPE_STRING);
-      gst_format = g_array_index (all_formats, GstVideoFormat, i);
-      g_value_set_string (&item, gst_video_format_to_string (gst_format));
-      gst_value_list_append_value (video_value, &item);
-      g_value_unset (&item);
-    }
-  }
-
-  g_array_unref (all_formats);
-
-  return TRUE;
-}
-
 static gboolean
 _dma_buf_convert_format_field_in_structure (GstGLContext * context,
     GstStructure * structure, GstPadDirection direction,
-    GstGLUploadDrmFormatFlags flags)
+    GstGLDrmFormatFlags flags)
 {
   const GValue *val;
 
@@ -1132,7 +786,7 @@ _dma_buf_convert_format_field_in_structure (GstGLContext * context,
       val = gst_structure_get_value (structure, "format");
     }
 
-    if (_dma_buf_transform_gst_formats_to_drm_formats (context,
+    if (gst_gl_dma_buf_transform_gst_formats_to_drm_formats (context,
             val, flags, &drm_formats)) {
       gst_structure_take_value (structure, "drm-format", &drm_formats);
     } else {
@@ -1157,7 +811,7 @@ _dma_buf_convert_format_field_in_structure (GstGLContext * context,
       return TRUE;
     }
 
-    if (_dma_buf_transform_drm_formats_to_gst_formats (context,
+    if (gst_gl_dma_buf_transform_drm_formats_to_gst_formats (context,
             val, flags, &gst_formats)) {
       gst_structure_take_value (structure, "format", &gst_formats);
     } else {
@@ -1192,7 +846,8 @@ _dma_buf_check_formats_in_structure (GstGLContext * context,
     if (fourcc == DRM_FORMAT_INVALID)
       return FALSE;
 
-    if (!_check_modifier (context, fourcc,
+    if (context &&
+        !gst_gl_context_egl_format_supports_modifier (context, fourcc,
             DRM_FORMAT_MOD_LINEAR, include_external))
       return FALSE;
 
@@ -1214,7 +869,8 @@ _dma_buf_check_formats_in_structure (GstGLContext * context,
       if (fourcc == DRM_FORMAT_INVALID)
         continue;
 
-      if (!_check_modifier (context, fourcc,
+      if (context &&
+          !gst_gl_context_egl_format_supports_modifier (context, fourcc,
               DRM_FORMAT_MOD_LINEAR, include_external))
         continue;
 
@@ -1259,7 +915,7 @@ _dma_buf_check_formats_in_structure (GstGLContext * context,
 static GstCaps *
 _dma_buf_upload_transform_caps_common (GstCaps * caps,
     GstGLContext * context, GstPadDirection direction,
-    GstGLUploadDrmFormatFlags flags,
+    GstGLDrmFormatFlags flags,
     GstGLTextureTarget target_mask,
     const gchar * from_feature, const gchar * to_feature)
 {
@@ -1320,7 +976,7 @@ _dma_buf_upload_transform_caps_common (GstCaps * caps,
       }
     } else {
       if (!_dma_buf_check_formats_in_structure (context, s,
-              flags & INCLUDE_EXTERNAL)) {
+              flags & GST_GL_DRM_FORMAT_INCLUDE_EXTERNAL)) {
         gst_structure_free (s);
         continue;
       }
@@ -1377,7 +1033,8 @@ _dma_buf_upload_transform_caps (gpointer impl, GstGLContext * context,
   g_assert (dmabuf->target == GST_GL_TEXTURE_TARGET_2D);
 
   if (direction == GST_PAD_SINK) {
-    GstGLUploadDrmFormatFlags flags = INCLUDE_EXTERNAL | LINEAR_ONLY;
+    GstGLDrmFormatFlags flags =
+        GST_GL_DRM_FORMAT_INCLUDE_EXTERNAL | GST_GL_DRM_FORMAT_LINEAR_ONLY;
 
     ret = _dma_buf_upload_transform_caps_common (caps, context, direction,
         flags, 1 << dmabuf->target, GST_CAPS_FEATURE_MEMORY_DMABUF,
@@ -1406,11 +1063,12 @@ _dma_buf_upload_transform_caps (gpointer impl, GstGLContext * context,
     gint i, n;
 
     ret = _dma_buf_upload_transform_caps_common (caps, context, direction,
-        INCLUDE_EXTERNAL | LINEAR_ONLY, 1 << dmabuf->target,
-        GST_CAPS_FEATURE_MEMORY_GL_MEMORY, GST_CAPS_FEATURE_MEMORY_DMABUF);
+        GST_GL_DRM_FORMAT_INCLUDE_EXTERNAL | GST_GL_DRM_FORMAT_LINEAR_ONLY,
+        1 << dmabuf->target, GST_CAPS_FEATURE_MEMORY_GL_MEMORY,
+        GST_CAPS_FEATURE_MEMORY_DMABUF);
     tmp = _dma_buf_upload_transform_caps_common (caps, context, direction,
-        INCLUDE_EXTERNAL | LINEAR_ONLY, 1 << dmabuf->target,
-        GST_CAPS_FEATURE_MEMORY_GL_MEMORY,
+        GST_GL_DRM_FORMAT_INCLUDE_EXTERNAL | GST_GL_DRM_FORMAT_LINEAR_ONLY,
+        1 << dmabuf->target, GST_CAPS_FEATURE_MEMORY_GL_MEMORY,
         GST_CAPS_FEATURE_MEMORY_SYSTEM_MEMORY);
     if (!ret) {
       ret = tmp;
@@ -1551,7 +1209,8 @@ _dma_buf_upload_accept (gpointer impl, GstBuffer * buffer, GstCaps * in_caps,
      * the tile dimension. This is because the shader needs to know the padded
      * size in order to correctly sample into these special buffer.
      */
-    if (meta && GST_VIDEO_FORMAT_INFO_IS_TILED (out_info->finfo)) {
+    if (!dmabuf->direct && meta &&
+        GST_VIDEO_FORMAT_INFO_IS_TILED (out_info->finfo)) {
       out_info->width = meta->width;
       out_info->height = meta->height;
 
@@ -1743,10 +1402,10 @@ _direct_dma_buf_upload_transform_caps (gpointer impl, GstGLContext * context,
 {
   struct DmabufUpload *dmabuf = impl;
   GstCaps *ret, *tmp;
-  GstGLUploadDrmFormatFlags flags = 0;
+  GstGLDrmFormatFlags flags = 0;
 
   if (dmabuf->target == GST_GL_TEXTURE_TARGET_EXTERNAL_OES)
-    flags |= INCLUDE_EXTERNAL;
+    flags |= GST_GL_DRM_FORMAT_INCLUDE_EXTERNAL;
 
   if (context) {
     const GstGLFuncs *gl = context->gl_vtable;
@@ -2162,6 +1821,7 @@ struct RawUpload
   GstGLUpload *upload;
   struct RawUploadFrame *in_frame;
   GstGLVideoAllocationParams *params;
+  GstCapsFeatures *features;
 };
 
 static struct RawUploadFrame *
@@ -2217,6 +1877,8 @@ _raw_data_upload_new (GstGLUpload * upload)
   struct RawUpload *raw = g_new0 (struct RawUpload, 1);
 
   raw->upload = upload;
+  raw->features = gst_caps_features_new_single_static_str
+      (GST_CAPS_FEATURE_MEMORY_SYSTEM_MEMORY);
 
   return raw;
 }
@@ -2281,16 +1943,10 @@ _raw_data_upload_accept (gpointer impl, GstBuffer * buffer, GstCaps * in_caps,
   struct RawUpload *raw = impl;
   GstCapsFeatures *features;
 
-  features =
-      gst_caps_features_new_single_static_str
-      (GST_CAPS_FEATURE_MEMORY_SYSTEM_MEMORY);
   /* Also consider the omited system memory feature cases, such as
      video/x-raw(meta:GstVideoOverlayComposition) */
-  if (!_filter_caps_with_features (in_caps, features, NULL)) {
-    gst_caps_features_free (features);
+  if (!_filter_caps_with_features (in_caps, raw->features, NULL))
     return FALSE;
-  }
-  gst_caps_features_free (features);
 
   features = gst_caps_get_features (out_caps, 0);
   if (!gst_caps_features_contains (features, GST_CAPS_FEATURE_MEMORY_GL_MEMORY))
@@ -2363,6 +2019,7 @@ _raw_data_upload_free (gpointer impl)
   if (raw->params)
     gst_gl_allocation_params_free ((GstGLAllocationParams *) raw->params);
 
+  gst_caps_features_free (raw->features);
   g_free (raw);
 }
 
@@ -2380,6 +2037,83 @@ static const UploadMethod _raw_data_upload = {
   &_raw_data_upload_perform,
   &_raw_data_upload_free
 };
+
+#if GST_GL_HAVE_DMABUF
+
+static gpointer
+_raw_data_upload_drm_new (GstGLUpload * upload)
+{
+  struct RawUpload *raw = g_new0 (struct RawUpload, 1);
+
+  raw->upload = upload;
+  raw->features = gst_caps_features_new_single_static_str
+      (GST_CAPS_FEATURE_MEMORY_DMABUF);
+
+  return raw;
+}
+
+static GstCaps *
+_raw_data_upload_drm_transform_caps (gpointer impl, GstGLContext * context,
+    GstPadDirection direction, GstCaps * caps)
+{
+  struct RawUpload *raw = impl;
+  GstGLDrmFormatFlags flags =
+      GST_GL_DRM_FORMAT_LINEAR_ONLY | GST_GL_DRM_FORMAT_INCLUDE_EMULATED;
+  GstCaps *ret;
+
+  if (direction == GST_PAD_SINK) {
+    ret = _dma_buf_upload_transform_caps_common (caps, context, direction,
+        flags, 1 << GST_GL_TEXTURE_TARGET_2D, GST_CAPS_FEATURE_MEMORY_DMABUF,
+        GST_CAPS_FEATURE_MEMORY_GL_MEMORY);
+
+    if (!ret) {
+      GST_DEBUG_OBJECT (raw->upload,
+          "direction %s, fails to transformed DMA caps %" GST_PTR_FORMAT,
+          "sink", caps);
+      return NULL;
+    }
+  } else {
+    gint i, n;
+
+    ret = _dma_buf_upload_transform_caps_common (caps, context, direction,
+        flags, 1 << GST_GL_TEXTURE_TARGET_2D, GST_CAPS_FEATURE_MEMORY_GL_MEMORY,
+        GST_CAPS_FEATURE_MEMORY_DMABUF);
+
+    if (!ret) {
+      GST_DEBUG_OBJECT (raw->upload,
+          "direction %s, fails to transformed DMA caps %" GST_PTR_FORMAT,
+          "src", caps);
+      return NULL;
+    }
+
+    n = gst_caps_get_size (ret);
+    for (i = 0; i < n; i++) {
+      GstStructure *s = gst_caps_get_structure (ret, i);
+
+      gst_structure_remove_fields (s, "texture-target", NULL);
+    }
+  }
+
+  return ret;
+}
+
+static GstStaticCaps _raw_data_upload_drm_caps =
+    GST_STATIC_CAPS (GST_VIDEO_DMA_DRM_CAPS_MAKE ";"
+    GST_VIDEO_CAPS_MAKE (GST_GL_MEMORY_VIDEO_FORMATS_STR));
+
+static const UploadMethod _raw_data_upload_drm = {
+  "Raw Data DRM",
+  0,
+  &_raw_data_upload_drm_caps,
+  &_raw_data_upload_drm_new,
+  &_raw_data_upload_drm_transform_caps,
+  &_raw_data_upload_accept,
+  &_raw_data_upload_propose_allocation,
+  &_raw_data_upload_perform,
+  &_raw_data_upload_free
+};
+
+#endif /* GST_GL_HAVE_DMABUF */
 
 #if GST_GL_HAVE_VIV_DIRECTVIV
 #ifndef GL_BGRA_EXT
@@ -3229,7 +2963,10 @@ static const UploadMethod *upload_methods[] = {
 #endif /* HAVE_NVMM */
   &_upload_meta_upload,
   /* Raw data must always be last / least preferred */
-  &_raw_data_upload
+  &_raw_data_upload,
+#if GST_GL_HAVE_DMABUF
+  &_raw_data_upload_drm,
+#endif
 };
 
 static GMutex upload_global_lock;
