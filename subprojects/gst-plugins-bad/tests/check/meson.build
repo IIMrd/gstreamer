@@ -1,3 +1,8 @@
+valgrind_dep = dependency('valgrind', required: false).partial_dependency(compile_args : true)
+if valgrind_dep.found()
+  cdata.set('HAVE_VALGRIND', 1)
+endif
+
 have_registry = true # FIXME get_option('registry')
 
 libparser = static_library('parser',
@@ -16,7 +21,7 @@ exif_dep = dependency('libexif', version : '>= 0.6.16', required : false)
 nalutils_dep = gstcodecparsers_dep.partial_dependency (compile_args: true, includes: true)
 
 enable_gst_play_tests = get_option('gst_play_tests')
-libsoup_dep = dependency('libsoup-2.4', version: '>=2.48', required: enable_gst_play_tests)
+libsoup_dep = dependency('libsoup-3.0', required : enable_gst_play_tests)
 
 # name, condition when to skip the test and extra dependencies
 base_tests = [
@@ -43,6 +48,7 @@ base_tests = [
   [['elements/h264parse.c'], false, [libparser_dep, gstcodecparsers_dep]],
   [['elements/h264timestamper.c'], false, [libparser_dep, gstcodecparsers_dep]],
   [['elements/h265parse.c'], false, [libparser_dep, gstcodecparsers_dep]],
+  [['elements/h266parse.c'], false, [libparser_dep, gstcodecparsers_dep]],
   [['elements/hlsdemux_m3u8.c'], not hls_dep.found(), [hls_dep]],
   [['elements/id3mux.c'], get_option('id3tag').disabled()],
   [['elements/interlace.c'], get_option('interlace').disabled()],

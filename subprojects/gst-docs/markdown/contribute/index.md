@@ -655,6 +655,91 @@ It's of course fine for another developer to assign a merge request with
 a `Merge in X` label to Marge immediately if they think it's fine to go in
 now and don't expect further comments or review being needed by others.
 
+### Fixing Since tags
+
+Since a few releases, CI  runs checks to ensure that all new symbols added
+as public API are marked with a Since tag in their docstrings.
+
+If the documentation job rejects your MR with:
+
+```
+ERROR: [check-missing-since-markers]: (missing-since-marker): /some/path: Missing since marker for GST_SOME_SYMBOL
+```
+
+You should be able to get rid of the warning by adding a new gtk-doc comment
+in the relevant source or header file with such contents:
+
+```
+/**
+ * GST_SOME_SYMBOL:
+ *
+ * some description of the symbol purposes
+ *
+ * Since: 1.XX
+ */
+```
+
+A common mistake for the docstring is to omit the description paragraph:
+
+```
+/**
+ * GST_SOME_SYMBOL:
+ *
+ * Since: 1.XX
+ */
+```
+
+This will *not* parse as valid gtk-doc syntax.
+
+
+If your attempt is not enough and you'd rather avoid waiting for CI to try various
+docstrings, or you simply want to build your documentation changes *fast* on
+your local machine, you can proceed as follows:
+
+```
+# Make sure you have hotdoc
+pipx install hotdoc
+# Make sure you have a doc-enabled build
+rm -rf build && meson build -Dgpl=enabled -Ddoc=enabled && ninja -C build
+# Build the complete documentation once
+ninja -C build/ subprojects/gst-docs/GStreamer-doc -v
+# Enter the devenv, hotdoc now finds the current devhelp2 files and
+# will not emit warnings about incorrect links
+ninja -C build devenv
+# Go back to the toplevel directory
+cd ..
+# Build the exact documentation subproject you are interested in,
+# this is super fast, adapt command to your case
+hotdoc run --conf-file build/subprojects/gst-plugins-bad/docs/mpegts-doc.json --previous-symbol-index subprojects/gst-docs/symbols/symbol_index.json
+```
+
+Another, less common situation is for the header file the docstring was added in to
+be explicitly excluded by the meson build files: some header files are known
+to contain gtk-doc like docstrings and to generate a ton of irrelevant warnings,
+we ignore those.
+
+If you have a concern it might be the case you can look at the relevant
+hotdoc.json file for your subproject to see exactly what sources are
+included / excluded.
+
+You can enable checks for up-to-date plugin caches and presence of the necessary
+since tags at commit time by setting the `GST_ENABLE_DOC_PRE_COMMIT_HOOK`
+environment variable to any value other than "0":
+
+``` shell
+GST_ENABLE_DOC_PRE_COMMIT_HOOK=1 git commit
+```
+
+The pre-commit hook will:
+
+* Stash unstaged changes (the path to the patch file is printed out)
+* Locate the build directory (the location can be specified through the `GST_DOC_BUILDDIR` environment variable)
+* Build the version of the code that is to be committed
+* Build the relevant plugins caches and error out if there is a diff
+* Build the relevant doc subprojects using `hotdoc` and error out in case of since tag errors
+
+In any case, the stashed changes are then re-applied
+
 ## Backporting to a stable branch
 
 Before backporting any changes to a stable branch, they should first be

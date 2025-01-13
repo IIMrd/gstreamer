@@ -99,7 +99,7 @@ endforeach
 
 build_hotdoc = true
 docconf = configuration_data()
-docconf.set('GST_API_VERSION', apiversion)
+docconf.set('GST_API_VERSION', api_version)
 
 version_entities = configure_file(input : 'version.in',
     output : 'gst_api_version.md',
@@ -122,8 +122,8 @@ foreach h: ['gettext.h', 'glib-compat-private.h', 'glib-compat.h',
 endforeach
 
 libs_doc = [hotdoc.generate_doc('gstreamer',
-    project_version: apiversion,
-    gi_c_sources: '../gst/*.[hc]',
+    project_version: api_version,
+    gi_c_sources: gst_sources + gst_headers,
     gi_sources: [gst_gir[0].full_path()],
     gi_c_source_filters: gst_excludes,
     sitemap: 'gst/sitemap.txt',
@@ -148,7 +148,7 @@ foreach lib: libs
   gir = lib[1]
   deps = [lib[2], gir]
   libs_doc += [hotdoc.generate_doc(name,
-      project_version: apiversion,
+      project_version: api_version,
       gi_c_sources: ['../libs/gst/' + name + '/*.[hc]'],
       gi_c_source_filters: gst_excludes,
       gi_sources: gir[0].full_path(),
@@ -165,22 +165,44 @@ foreach lib: libs
 endforeach
 
 cdir = meson.current_source_dir()
-if host_machine.system() == 'windows'
-  pathsep = ';'
-else
-  pathsep = ':'
-endif
-gst_plugins_doc = run_command(
+
+doc_source_file = configure_file(output: 'doc_sources.json', configuration: plugin_sources, output_format: 'json')
+
+plugin_libraries = {}
+
+foreach plugin: plugins
+  if plugin.name().startswith('gst')
+    plugin_name = plugin.name().substring(3)
+  else
+    plugin_name = plugin.name()
+  endif
+
+  plugin_libraries += {
+    plugin_name: plugin.full_path()
+  }
+endforeach
+
+doc_plugin_libs_file = configure_file(output: 'doc_plugin_libs.json', configuration: plugin_libraries, output_format: 'json')
+
+plugin_hotdoc_configs = custom_target(
+  'build-hotdoc-configs',
+  command: [
     plugins_cache_generator,
     'hotdoc-config',
     '--builddir', meson.current_build_dir(),
-    '--project_version', apiversion,
+    '--project_version', api_version,
     '--sitemap', cdir / 'plugins/sitemap.txt',
     '--index', cdir / 'plugins/index.md',
     '--gst_index', cdir / 'plugins/index.md',
+    '--gst_c_source_file', doc_source_file,
+    '--gst_plugin_libraries_file', doc_plugin_libs_file,
     '--gst_c_sources',
-        cdir / '../plugins/*/*.c',
-        cdir / '../plugins/*/*.h',
-    '--gst_cache_file', plugins_cache,
-    check: true,
-).stdout().split(pathsep)
+      cdir / '../plugins/*/*.c',
+      cdir / '../plugins/*/*.h',
+    '--gst_cache_file', '@INPUT@',
+    '--output', '@OUTPUT@',
+  ],
+  input: plugins_cache,
+  output: 'hotdoc-configs.json',
+  depends: [hotdoc_plugin_scanner],
+)

@@ -7,8 +7,8 @@
 /**
  * SECTION:element-svtjpegxsenc
  *
- * The svtjpegxsenc element does JPEG XS encoding using Scalable
- * Video Technology for JPEG_XS Encoder (SVT JPEG XS Encoder).
+ * The svtjpegxsenc element does JPEG XS encoding using the Scalable
+ * Video Technology for JPEG_XS Encoder (SVT JPEG XS Encoder) library.
  *
  * See https://jpeg.org/jpegxs/ for more information about the JPEG XS format.
  *
@@ -165,10 +165,17 @@ enum
 // FIXME: add 4:2:2 and 4:4:4 packed formats
 // Only handle progressive mode for now
 static GstStaticPadTemplate sink_pad_template =
-GST_STATIC_PAD_TEMPLATE ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
+    GST_STATIC_PAD_TEMPLATE ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
     GST_STATIC_CAPS ("video/x-raw, "
         "format = { " SUPPORTED_FORMATS " },"
         "interlace-mode = progressive, "
+        "width = (int) [16, 16384], "
+        "height = (int) [16, 16384], "
+        "framerate = (fraction) [0, MAX]; "
+        "video/x-raw, "
+        "format = { " SUPPORTED_FORMATS " },"
+        "interlace-mode = interleaved, "
+        "field-order = { top-field-first, bottom-field-first }, "
         "width = (int) [16, 16384], " "height = (int) [16, 16384], "
         "framerate = (fraction) [0, MAX]"));
 
@@ -176,6 +183,7 @@ static GstStaticPadTemplate src_pad_template =
 GST_STATIC_PAD_TEMPLATE ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
     GST_STATIC_CAPS ("image/x-jxsc, alignment = frame, "
         "width = (int) [16, 16384], height = (int) [16, 16384], "
+        "interlace-mode = { progressive, fields }, "
         "sampling = { YCbCr-4:4:4, YCbCr-4:2:2, YCbCr-4:2:0 }, "
         "framerate = (fraction) [0, MAX]"));
 
@@ -437,12 +445,14 @@ gst_svt_jpeg_xs_enc_set_format (GstVideoEncoder * encoder,
     }
   }
 
+  guint n_fields = !!GST_VIDEO_INFO_IS_INTERLACED (&state->info) + 1;
+
   const char *sampling = NULL;
 
   // Fill in video format parameters
   {
     enc->source_width = GST_VIDEO_INFO_WIDTH (&state->info);
-    enc->source_height = GST_VIDEO_INFO_HEIGHT (&state->info);
+    enc->source_height = GST_VIDEO_INFO_HEIGHT (&state->info) / n_fields;
 
     switch (GST_VIDEO_INFO_FORMAT (&state->info)) {
       case GST_VIDEO_FORMAT_I420:
@@ -523,12 +533,12 @@ gst_svt_jpeg_xs_enc_set_format (GstVideoEncoder * encoder,
   {
     SvtJxsErrorType_t ret;
     svt_jpeg_xs_image_config_t img_config;
-    uint32_t bytes_per_frame = 0;
+    uint32_t bytes_per_frame_or_field = 0;
 
     ret = svt_jpeg_xs_encoder_get_image_config (SVT_JPEGXS_API_VER_MAJOR,
-        SVT_JPEGXS_API_VER_MINOR, enc, &img_config, &bytes_per_frame);
+        SVT_JPEGXS_API_VER_MINOR, enc, &img_config, &bytes_per_frame_or_field);
 
-    if (ret != SvtJxsErrorNone || bytes_per_frame == 0) {
+    if (ret != SvtJxsErrorNone || bytes_per_frame_or_field == 0) {
       GST_ELEMENT_ERROR (encoder,
           LIBRARY, INIT,
           (NULL),
@@ -536,8 +546,15 @@ gst_svt_jpeg_xs_enc_set_format (GstVideoEncoder * encoder,
       return FALSE;
     }
 
-    GST_DEBUG_OBJECT (jxsenc, "Encoded frame size: %u bytes", bytes_per_frame);
-    jxsenc->bytes_per_frame = bytes_per_frame;
+    if (n_fields == 2) {
+      GST_DEBUG_OBJECT (jxsenc, "Encoded field size: %u bytes",
+          bytes_per_frame_or_field);
+    }
+
+    GST_DEBUG_OBJECT (jxsenc, "Encoded frame size: %u bytes",
+        bytes_per_frame_or_field * n_fields);
+
+    jxsenc->bytes_per_frame = bytes_per_frame_or_field * n_fields;
   }
 
   GstCaps *src_caps = gst_static_pad_template_get_caps (&src_pad_template);
@@ -555,6 +572,12 @@ gst_svt_jpeg_xs_enc_set_format (GstVideoEncoder * encoder,
       gst_video_encoder_set_output_state (GST_VIDEO_ENCODER (encoder), src_caps,
       jxsenc->state);
 
+  if (n_fields == 2) {
+    // input will be interleaved, but we output interlace-mode=fields
+    GST_VIDEO_INFO_INTERLACE_MODE (&output_state->info) =
+        GST_VIDEO_INTERLACE_MODE_FIELDS;
+  }
+
   if (!gst_video_encoder_negotiate (encoder)) {
     gst_video_codec_state_unref (output_state);
     return FALSE;
@@ -566,26 +589,12 @@ gst_svt_jpeg_xs_enc_set_format (GstVideoEncoder * encoder,
   return TRUE;
 }
 
+// The codestream data is either a full progressive image or a single field.
 static GstFlowReturn
-gst_svt_jpeg_xs_enc_handle_frame (GstVideoEncoder * vencoder,
-    GstVideoCodecFrame * frame)
+gst_svt_jpeg_xs_enc_encode_codestream (GstSvtJpegXsEnc * jxsenc,
+    guint field, guint n_fields, GstVideoFrame * video_frame,
+    svt_jpeg_xs_bitstream_buffer_t * bitstream_buffer)
 {
-  GstSvtJpegXsEnc *jxsenc = GST_SVT_JPEG_XS_ENC (vencoder);
-
-  GST_LOG_OBJECT (jxsenc, "Frame to encode");
-
-  if (jxsenc->jxs_encoder == NULL || jxsenc->state == NULL) {
-    GST_ERROR_OBJECT (jxsenc,
-        "Encoder not initialised yet. No input caps set?");
-    return GST_FLOW_NOT_NEGOTIATED;
-  }
-  // Map input buffer
-  GstVideoFrame video_frame;
-
-  if (!gst_video_frame_map (&video_frame, &jxsenc->state->info,
-          frame->input_buffer, GST_MAP_READ))
-    goto map_error;
-
   // Encoder input/output frame struct
   svt_jpeg_xs_frame_t encoder_frame;
 
@@ -594,24 +603,34 @@ gst_svt_jpeg_xs_enc_handle_frame (GstVideoEncoder * vencoder,
     svt_jpeg_xs_image_buffer_t img = { {0,}
     };
 
-    img.data_yuv[0] = GST_VIDEO_FRAME_PLANE_DATA (&video_frame, 0);
-    img.data_yuv[1] = GST_VIDEO_FRAME_PLANE_DATA (&video_frame, 1);
-    img.data_yuv[2] = GST_VIDEO_FRAME_PLANE_DATA (&video_frame, 2);
+    img.data_yuv[0] = (guint8 *) GST_VIDEO_FRAME_PLANE_DATA (video_frame, 0)
+        + field * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 0);
+    img.data_yuv[1] = (guint8 *) GST_VIDEO_FRAME_PLANE_DATA (video_frame, 1)
+        + field * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 1);
+    img.data_yuv[2] = (guint8 *) GST_VIDEO_FRAME_PLANE_DATA (video_frame, 2)
+        + field * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 2);
 
     // Note: wants stride in pixels not in bytes (might need tweaks for 10-bit)
-    img.stride[0] = GST_VIDEO_FRAME_COMP_STRIDE (&video_frame, 0)
-        / GST_VIDEO_FRAME_COMP_PSTRIDE (&video_frame, 0);
-    img.stride[1] = GST_VIDEO_FRAME_COMP_STRIDE (&video_frame, 1)
-        / GST_VIDEO_FRAME_COMP_PSTRIDE (&video_frame, 1);
-    img.stride[2] = GST_VIDEO_FRAME_COMP_STRIDE (&video_frame, 2)
-        / GST_VIDEO_FRAME_COMP_PSTRIDE (&video_frame, 2);
+    img.stride[0] = n_fields * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 0)
+        / GST_VIDEO_FRAME_COMP_PSTRIDE (video_frame, 0);
+    img.stride[1] = n_fields * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 1)
+        / GST_VIDEO_FRAME_COMP_PSTRIDE (video_frame, 1);
+    img.stride[2] = n_fields * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 2)
+        / GST_VIDEO_FRAME_COMP_PSTRIDE (video_frame, 2);
 
-    img.alloc_size[0] = GST_VIDEO_FRAME_COMP_STRIDE (&video_frame, 0)
-        * GST_VIDEO_FRAME_COMP_HEIGHT (&video_frame, 0);
-    img.alloc_size[1] = GST_VIDEO_FRAME_COMP_STRIDE (&video_frame, 1)
-        * GST_VIDEO_FRAME_COMP_HEIGHT (&video_frame, 1);
-    img.alloc_size[2] = GST_VIDEO_FRAME_COMP_STRIDE (&video_frame, 2)
-        * GST_VIDEO_FRAME_COMP_HEIGHT (&video_frame, 2);
+    // svt-jpegxs returns an error if we specify the size correctly,
+    // probably because of lazy assumption in some input check.
+    // See https://github.com/OpenVisualCloud/SVT-JPEG-XS/pull/5
+    // Remove once there's a new release with the fix.
+    img.alloc_size[0] = GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 0)
+        * GST_VIDEO_FRAME_COMP_HEIGHT (video_frame, 0);
+    //  - field * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 0);
+    img.alloc_size[1] = GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 1)
+        * GST_VIDEO_FRAME_COMP_HEIGHT (video_frame, 1);
+    //  - field * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 1);
+    img.alloc_size[2] = GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 2)
+        * GST_VIDEO_FRAME_COMP_HEIGHT (video_frame, 2);
+    //  - field * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 2);
 
     for (int i = 0; i < 3; ++i) {
       GST_TRACE_OBJECT (jxsenc, "img stride[%u] = %u, alloc_size[%u]: %u",
@@ -621,34 +640,7 @@ gst_svt_jpeg_xs_enc_handle_frame (GstVideoEncoder * vencoder,
     encoder_frame.image = img;
   }
 
-  GstFlowReturn flow;
-
-  // Allocate output buffer
-  {
-    // Could use a bufferpool here, since output frames are all the same size.
-    flow =
-        gst_video_encoder_allocate_output_frame (vencoder, frame,
-        jxsenc->bytes_per_frame);
-
-    if (flow != GST_FLOW_OK)
-      goto allocate_output_frame_failure;
-  }
-
-  GstMapInfo outbuf_map = GST_MAP_INFO_INIT;
-
-  // Set up encoder output buffer struct
-  {
-    svt_jpeg_xs_bitstream_buffer_t out_buf;
-
-    if (!gst_buffer_map (frame->output_buffer, &outbuf_map, GST_MAP_WRITE))
-      goto output_buffer_map_write_failure;
-
-    out_buf.buffer = outbuf_map.data;
-    out_buf.allocation_size = outbuf_map.size;
-    out_buf.used_size = 0;
-
-    encoder_frame.bitstream = out_buf;
-  }
+  encoder_frame.bitstream = *bitstream_buffer;
 
   encoder_frame.user_prv_ctx_ptr = NULL;
 
@@ -676,16 +668,107 @@ gst_svt_jpeg_xs_enc_handle_frame (GstVideoEncoder * vencoder,
       goto get_packet_error;
   }
 
-  GST_LOG_OBJECT (jxsenc, "Output buffer size: %u, last=%d",
-      encoder_frame.bitstream.used_size,
-      encoder_frame.bitstream.last_packet_in_frame);
+  *bitstream_buffer = encoder_frame.bitstream;
 
-  // Shouldn't happen, but let's play it safe
-  if (encoder_frame.bitstream.used_size < jxsenc->bytes_per_frame)
-    gst_buffer_set_size (frame->output_buffer,
-        encoder_frame.bitstream.used_size);
+  GST_TRACE_OBJECT (jxsenc, "Codestream length: %u (%s)",
+      encoder_frame.bitstream.used_size, (n_fields == 2) ? "field" : "frame");
+
+  return GST_FLOW_OK;
+
+/* Errors */
+send_picture_error:
+  {
+    GST_ELEMENT_ERROR (jxsenc, LIBRARY, ENCODE, (NULL),
+        ("Error encoding image (%s): 0x%08x", "send_picture", enc_ret));
+    return GST_FLOW_ERROR;
+  }
+
+get_packet_error:
+  {
+    GST_ELEMENT_ERROR (jxsenc, LIBRARY, ENCODE, (NULL),
+        ("Error encoding image (%s): 0x%08x", "get_packet", enc_ret));
+    return GST_FLOW_ERROR;
+  }
+}
+
+static GstFlowReturn
+gst_svt_jpeg_xs_enc_handle_frame (GstVideoEncoder * vencoder,
+    GstVideoCodecFrame * frame)
+{
+  GstSvtJpegXsEnc *jxsenc = GST_SVT_JPEG_XS_ENC (vencoder);
+
+  GST_LOG_OBJECT (jxsenc, "Frame to encode");
+
+  if (jxsenc->jxs_encoder == NULL || jxsenc->state == NULL) {
+    GST_ERROR_OBJECT (jxsenc,
+        "Encoder not initialised yet. No input caps set?");
+    return GST_FLOW_NOT_NEGOTIATED;
+  }
+  // Map input buffer
+  GstVideoFrame video_frame;
+
+  if (!gst_video_frame_map (&video_frame, &jxsenc->state->info,
+          frame->input_buffer, GST_MAP_READ))
+    goto map_error;
+
+  GstFlowReturn flow;
+
+  // Allocate output buffer
+  {
+    // Could use a bufferpool here, since output frames are all the same size.
+    flow =
+        gst_video_encoder_allocate_output_frame (vencoder, frame,
+        jxsenc->bytes_per_frame);
+
+    if (flow != GST_FLOW_OK)
+      goto allocate_output_frame_failure;
+  }
+
+  guint n_fields = !!GST_VIDEO_FRAME_IS_INTERLACED (&video_frame) + 1;
+
+  // Map output buffer
+  GstMapInfo outbuf_map = GST_MAP_INFO_INIT;
+
+  if (!gst_buffer_map (frame->output_buffer, &outbuf_map, GST_MAP_WRITE))
+    goto output_buffer_map_write_failure;
+
+  // Encode frame or fields
+  gsize offset = 0;
+
+  for (guint field = 0; field < n_fields; ++field) {
+    svt_jpeg_xs_bitstream_buffer_t out_buf;
+
+    if (n_fields == 2) {
+      GST_TRACE_OBJECT (jxsenc,
+          "Encoding field %u of 2 @ %zu", field + 1, offset);
+    }
+
+    // Set up encoder output buffer struct
+    out_buf.buffer = outbuf_map.data + offset;
+    out_buf.allocation_size = outbuf_map.size - offset;
+    out_buf.used_size = 0;
+
+    flow =
+        gst_svt_jpeg_xs_enc_encode_codestream (jxsenc, field, n_fields,
+        &video_frame, &out_buf);
+
+    if (flow != GST_FLOW_OK)
+      goto out_unmap;
+
+    offset += out_buf.used_size;
+  }
 
   gst_buffer_unmap (frame->output_buffer, &outbuf_map);
+
+  // Shouldn't happen, but let's play it safe
+  if (offset < jxsenc->bytes_per_frame) {
+    GST_WARNING_OBJECT (jxsenc, "Short encoder output: %zu < %u bytes",
+        offset, jxsenc->bytes_per_frame);
+    gst_buffer_set_size (frame->output_buffer, offset);
+  }
+
+  GST_LOG_OBJECT (jxsenc, "Output buffer size: %zu bytes, codestreams=%u",
+      offset, n_fields);
 
   // All frames are key frames
   GST_VIDEO_CODEC_FRAME_SET_SYNC_POINT (frame);
@@ -728,22 +811,6 @@ allocate_output_frame_failure:
 output_buffer_map_write_failure:
   {
     GST_ERROR_OBJECT (jxsenc, "Couldn't map output buffer!");
-    flow = GST_FLOW_ERROR;
-    goto out_unmap;
-  }
-
-send_picture_error:
-  {
-    GST_ELEMENT_ERROR (jxsenc, LIBRARY, ENCODE, (NULL),
-        ("Error encoding image: 0x%08x", enc_ret));
-    flow = GST_FLOW_ERROR;
-    goto out_unmap;
-  }
-
-get_packet_error:
-  {
-    GST_ELEMENT_ERROR (jxsenc, LIBRARY, ENCODE, (NULL),
-        ("Error encoding image (%s): 0x%08x", "get_packet", enc_ret));
     flow = GST_FLOW_ERROR;
     goto out_unmap;
   }

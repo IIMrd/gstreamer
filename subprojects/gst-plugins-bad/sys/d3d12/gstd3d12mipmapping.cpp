@@ -17,6 +17,17 @@
  * Boston, MA 02110-1301, USA.
  */
 
+/**
+ * SECTION:element-d3d12mipmapping
+ * @title: d3d12mipmapping
+ * @short_description: Direct3D12 Mipmap generator element
+ *
+ * d3d12mipmapping element generates mipmap enabled Direct3D12 textures
+ * from input textures
+ *
+ * Since: 1.26
+ */
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -30,6 +41,7 @@
 #include <queue>
 #include <wrl.h>
 #include <atomic>
+#include <math.h>
 
 /* *INDENT-OFF* */
 using namespace Microsoft::WRL;
@@ -37,6 +49,8 @@ using namespace Microsoft::WRL;
 
 GST_DEBUG_CATEGORY_STATIC (gst_d3d12_mip_mapping_debug);
 #define GST_CAT_DEFAULT gst_d3d12_mip_mapping_debug
+
+#define OUTPUT_FORMATS "{ VUYA, RGBA, AYUV64, RGBA64_LE }"
 
 static GstStaticPadTemplate sink_template = GST_STATIC_PAD_TEMPLATE ("sink",
     GST_PAD_SINK,
@@ -52,19 +66,21 @@ static GstStaticPadTemplate src_template = GST_STATIC_PAD_TEMPLATE ("src",
     GST_PAD_SRC,
     GST_PAD_ALWAYS,
     GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE_WITH_FEATURES
-        (GST_CAPS_FEATURE_MEMORY_D3D12_MEMORY, "RGBA") "; "
+        (GST_CAPS_FEATURE_MEMORY_D3D12_MEMORY, OUTPUT_FORMATS) "; "
         GST_VIDEO_CAPS_MAKE_WITH_FEATURES
         (GST_CAPS_FEATURE_MEMORY_D3D12_MEMORY ","
             GST_CAPS_FEATURE_META_GST_VIDEO_OVERLAY_COMPOSITION,
-            "RGBA")));
+            OUTPUT_FORMATS)));
 
 enum
 {
   PROP_0,
   PROP_ASYNC_DEPTH,
+  PROP_MIP_LEVELS,
 };
 
 #define DEFAULT_ASYNC_DEPTH 0
+#define DEFAULT_MIP_LEVELS 0
 
 /* *INDENT-OFF* */
 struct MipMappingContext
@@ -115,6 +131,7 @@ struct GstD3D12MipMappingPrivate
   D3D12_BOX prev_in_rect = { };
 
   std::atomic<guint> async_depth = { DEFAULT_ASYNC_DEPTH };
+  std::atomic<guint> mip_levels = { DEFAULT_MIP_LEVELS };
 
   std::mutex lock;
 };
@@ -171,6 +188,12 @@ gst_d3d12_mip_mapping_class_init (GstD3D12MipMappingClass * klass)
           "synchronization (0 = unlimited)", 0, G_MAXINT, DEFAULT_ASYNC_DEPTH,
           (GParamFlags) (GST_PARAM_MUTABLE_PLAYING |
               G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
+  g_object_class_install_property (object_class, PROP_MIP_LEVELS,
+      g_param_spec_uint ("mip-levels", "Mip Levels",
+          "Mipmap levels to use (0 = maximum level)",
+          0, G_MAXUINT16, DEFAULT_MIP_LEVELS,
+          (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
   gst_element_class_add_static_pad_template (element_class, &sink_template);
   gst_element_class_add_static_pad_template (element_class, &src_template);
@@ -232,6 +255,9 @@ gst_d3d12_mip_mapping_set_property (GObject * object, guint prop_id,
     case PROP_ASYNC_DEPTH:
       priv->async_depth = g_value_get_uint (value);
       break;
+    case PROP_MIP_LEVELS:
+      priv->mip_levels = g_value_get_uint (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -248,6 +274,9 @@ gst_d3d12_mip_mapping_get_property (GObject * object, guint prop_id,
   switch (prop_id) {
     case PROP_ASYNC_DEPTH:
       g_value_set_uint (value, priv->async_depth);
+      break;
+    case PROP_MIP_LEVELS:
+      g_value_set_uint (value, priv->mip_levels);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -758,6 +787,8 @@ gst_d3d12_mip_mapping_decide_allocation (GstBaseTransform * trans,
     GstQuery * query)
 {
   auto filter = GST_D3D12_BASE_FILTER (trans);
+  auto self = GST_D3D12_MIP_MAPPING (trans);
+  auto priv = self->priv;
   GstCaps *outcaps = nullptr;
   GstBufferPool *pool = nullptr;
   guint size, min = 0, max = 0;
@@ -806,8 +837,18 @@ gst_d3d12_mip_mapping_decide_allocation (GstBaseTransform * trans,
       GST_D3D12_ALLOCATION_FLAG_DEFAULT, resource_flags,
       D3D12_HEAP_FLAG_SHARED);
 
+  guint mip_levels = priv->mip_levels;
+  if (mip_levels != 0) {
+    guint max_levels = 1 + (guint) floor (log2 (MAX (info.width, info.height)));
+    GST_DEBUG_OBJECT (self, "Requested mip levels %d, max levels %d",
+        mip_levels, max_levels);
+
+    if (max_levels <= mip_levels)
+      mip_levels = 0;
+  }
+
   /* Auto generate mip maps */
-  gst_d3d12_allocation_params_set_mip_levels (d3d12_params, 0);
+  gst_d3d12_allocation_params_set_mip_levels (d3d12_params, mip_levels);
 
   gst_buffer_pool_config_set_d3d12_allocation_params (config, d3d12_params);
   gst_d3d12_allocation_params_free (d3d12_params);

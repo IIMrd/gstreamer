@@ -240,6 +240,7 @@ guint64 system_time = 1;
     "video/x-h264,stream-format=(string)byte-stream;" \
     "video/x-h265,stream-format=(string)byte-stream;" \
     "video/x-vp9;" \
+    "video/x-av1,stream-format=(string)obu-stream,alignment=(string)frame;" \
     "video/x-dirac;" \
     "video/x-cavs;" \
     "video/x-wmv," \
@@ -1583,6 +1584,24 @@ create_pad_for_stream (MpegTSBase *base, MpegTSBaseStream *bstream,
           is_audio = TRUE;
           caps = gst_caps_new_empty_simple ("audio/x-smpte-302m");
           break;
+        case DRF_ID_AV1G:
+          GST_DEBUG ("AV1");
+          is_video = TRUE;
+          caps =
+              gst_caps_new_simple ("video/x-av1", "stream-format",
+              G_TYPE_STRING, "obu-stream", "alignment", G_TYPE_STRING, "frame",
+              NULL);
+          desc = mpegts_get_descriptor_from_stream (bstream, 0x80);
+          if (desc != NULL) {
+            GstCaps *av1c_caps;
+            GstBuffer *buf = gst_buffer_new_wrapped (g_memdup2 (desc->data + 2,
+                    desc->length), desc->length);
+            av1c_caps = gst_codec_utils_av1_create_caps_from_av1c (buf);
+            gst_caps_set_simple (av1c_caps, "codec_data", GST_TYPE_BUFFER, buf,
+                NULL);
+            caps = gst_caps_intersect (caps, av1c_caps);
+          }
+          break;
         case DRF_ID_OPUS:
           desc = mpegts_get_descriptor_from_stream (bstream,
               GST_MTS_DESC_DVB_EXTENSION);
@@ -1939,27 +1958,70 @@ create_pad_for_stream (MpegTSBase *base, MpegTSBaseStream *bstream,
         GST_WARNING_OBJECT (demux, "Invalid JPEG XS descriptor");
         break;
       }
-      if (jpegxs.frat >> 30) {
-        GST_WARNING_OBJECT (demux, "Interlaced JPEG-XS not supported yet");
+
+      guint8 interlace_mode = (jpegxs.frat >> 30) & 0x3;
+
+      if (interlace_mode == 3) {        // Reserved
+        GST_WARNING_OBJECT (demux, "Unknown JPEG XS interlace mode 3");
         break;
       }
+
+      const gchar *field_order_str;
+      guint n_fields;
+
+      switch (interlace_mode) {
+        case 1:
+          field_order_str = "top-field-first";
+          n_fields = 2;
+          break;
+        case 2:
+          field_order_str = "bottom-field-first";
+          n_fields = 2;
+          break;
+        default:
+          g_assert_not_reached ();
+          /* fall through */
+        case 0:
+          field_order_str = NULL;
+          n_fields = 1;
+          break;
+      }
+
       if ((jpegxs.schar >> 15) == 0) {
         GST_WARNING_OBJECT (demux, "JPEG-XS sampling properties are required");
         break;
       }
       is_video = TRUE;
-      caps =
-          gst_caps_from_string
-          ("image/x-jxsc, alignment=(string)frame, interlace-mode=(string)progressive");
-
+      caps = gst_caps_from_string ("image/x-jxsc, alignment=(string)frame");
       /* interlace-mode, sampling, depth, framerate */
       gint depth = ((jpegxs.schar >> 4) & 0xf) + 1;
       gst_caps_set_simple (caps, "width", G_TYPE_INT, jpegxs.horizontal_size,
-          "height", G_TYPE_INT, jpegxs.vertical_size,
+          "height", G_TYPE_INT, jpegxs.vertical_size * n_fields,
           "depth", G_TYPE_INT, depth, NULL);
+
+      if (field_order_str) {
+        gst_caps_set_simple (caps,
+            "interlace-mode", G_TYPE_STRING, "fields",
+            "field-order", G_TYPE_STRING, field_order_str, NULL);
+      } else {
+        gst_caps_set_simple (caps,
+            "interlace-mode", G_TYPE_STRING, "progressive", NULL);
+      }
+
       if (jpegxs.frat != 0) {
         gint framerate_num = (jpegxs.frat & 0x0000FFFFU);
         gint framerate_den = ((jpegxs.frat >> 24) & 0x0000003FU);
+        if (framerate_den == 1) {
+          // framerate_den = 1;
+        } else if (framerate_den == 2) {
+          framerate_num *= 1000;
+          framerate_den = 1001;
+        } else {                // Reserved value
+          GST_WARNING_OBJECT (demux,
+              "Unknown JPEG XS framerate denominator code %u", framerate_den);
+          break;
+        }
+
         gst_caps_set_simple (caps,
             "framerate", GST_TYPE_FRACTION, framerate_num, framerate_den, NULL);
       }

@@ -7,8 +7,8 @@
 /**
  * SECTION:element-svtjpegxsdec
  *
- * The svtjpegxsdec element does JPEG XS decoding using Scalable
- * Video Technology for JPEG XS Decoder (SVT JPEG XS Decoder).
+ * The svtjpegxsdec element does JPEG XS decoding using the Scalable
+ * Video Technology for JPEG XS Decoder (SVT JPEG XS Decoder) library.
  *
  * See https://jpeg.org/jpegxs/ for more information about the JPEG XS format.
  *
@@ -29,6 +29,8 @@
 
 GST_DEBUG_CATEGORY_STATIC (svtjpegxsdec_debug);
 #define GST_CAT_DEFAULT svtjpegxsdec_debug
+
+#define GST_JPEG_XS_DEC_FLOW_DROP_FRAME (GST_FLOW_CUSTOM_ERROR - 1000)
 
 static const uint8_t BLOCKING = 1;
 
@@ -99,18 +101,17 @@ enum
 static GstStaticPadTemplate sink_pad_template =
 GST_STATIC_PAD_TEMPLATE ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
     GST_STATIC_CAPS ("image/x-jxsc, alignment = frame, "
-        "interlace-mode = progressive, "
+        "interlace-mode = { progressive, fields }, "
         "sampling = { YCbCr-4:4:4, YCbCr-4:2:2, YCbCr-4:2:0 }, "
         "depth = { 8, 10, 12 }"));
 
 // FIXME: add 4:2:2 and 4:4:4 packed formats
-// Only handle progressive mode for now
 static GstStaticPadTemplate src_pad_template =
 GST_STATIC_PAD_TEMPLATE ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
     GST_STATIC_CAPS ("video/x-raw, "    //
-        "format = (string) { " SUPPORTED_FORMATS " },"
-        "interlace-mode = progressive, "
-        "width = (int) [16, 16384], " "height = (int) [16, 16384], "
+        "format = (string) { " SUPPORTED_FORMATS " }, "
+        "interlace-mode = { progressive, interleaved }, "
+        "width = (int) [16, 16384], height = (int) [16, 16384], "
         "framerate = (fraction) [0, MAX]"));
 
 #define gst_svt_jpeg_xs_dec_parent_class parent_class
@@ -278,7 +279,7 @@ static const uint32_t FAST_SEARCH = 1;
 static const uint32_t FRAME_BASED = 0;
 
 static GstFlowReturn
-gst_svt_jpeg_xs_dec_init_decoder (GstSvtJpegXsDec * jxsdec,
+gst_svt_jpeg_xs_dec_init_decoder (GstSvtJpegXsDec * jxsdec, guint n_fields,
     const guint8 * data, gsize size)
 {
   svt_jpeg_xs_image_config_t img_config;
@@ -293,10 +294,10 @@ gst_svt_jpeg_xs_dec_init_decoder (GstSvtJpegXsDec * jxsdec,
         ("Couldn't probe input frame headers, error code: 0x%08x", dec_ret));
     return GST_FLOW_ERROR;
   }
-  // We expect complete frames as input
-  if (size != expected_frame_size) {
+  // We expect complete frames as input (or two codestreams, one per field)
+  if (size < expected_frame_size) {
     GST_ELEMENT_ERROR (jxsdec, STREAM, DECODE, (NULL),
-        ("Input frame size does not match expected size, %zu != %u",
+        ("Input frame size smaller than expected size, %zu < %u",
             size, expected_frame_size));
     return GST_FLOW_ERROR;
   }
@@ -343,9 +344,9 @@ gst_svt_jpeg_xs_dec_init_decoder (GstSvtJpegXsDec * jxsdec,
 
   svt_jpeg_xs_image_config_t *cfg = &jxsdec->img_config;
 
-  GST_INFO_OBJECT (jxsdec, "Output image configuration:");
+  GST_INFO_OBJECT (jxsdec, "Output image configuration (%u fields):", n_fields);
   GST_INFO_OBJECT (jxsdec, "  width: %u", cfg->width);
-  GST_INFO_OBJECT (jxsdec, "  height: %u", cfg->height);
+  GST_INFO_OBJECT (jxsdec, "  height: %u", cfg->height * n_fields);
   GST_INFO_OBJECT (jxsdec, "  depth: %u", cfg->bit_depth);
   GST_INFO_OBJECT (jxsdec, "  format: %s", format_to_format_name (cfg->format));
   GST_INFO_OBJECT (jxsdec, "  components: %u", cfg->components_num);
@@ -416,38 +417,24 @@ gst_svt_jpeg_xs_dec_init_decoder (GstSvtJpegXsDec * jxsdec,
 
   jxsdec->output_state =
       gst_video_decoder_set_output_state (GST_VIDEO_DECODER (jxsdec), fmt,
-      cfg->width, cfg->height, jxsdec->input_state);
+      cfg->width, cfg->height * n_fields, jxsdec->input_state);
+
+  // The input caps have interlace-mode=fields since that seems the best
+  // mapping, but we will output interlace-mode=interleaved.
+  if (n_fields == 2) {
+    GST_VIDEO_INFO_INTERLACE_MODE (&jxsdec->output_state->info) =
+        GST_VIDEO_INTERLACE_MODE_INTERLEAVED;
+  }
 
   return GST_FLOW_OK;
 }
 
+// The codestream data is either a full progressive image or a single field.
 static GstFlowReturn
-gst_svt_jpeg_xs_dec_handle_frame (GstVideoDecoder * vdecoder,
-    GstVideoCodecFrame * frame)
+gst_svt_jpeg_xs_dec_decode_codestream (GstSvtJpegXsDec * jxsdec,
+    guint field, guint n_fields, GstVideoFrame * video_frame,
+    const guint8 * data, gsize data_size)
 {
-  GstSvtJpegXsDec *jxsdec = GST_SVT_JPEG_XS_DEC (vdecoder);
-  GstFlowReturn flow = GST_FLOW_OK;
-
-  GST_LOG_OBJECT (jxsdec, "Frame to decode, size: %zu bytes",
-      gst_buffer_get_size (frame->input_buffer));
-
-  if (jxsdec->input_state == NULL) {
-    GST_WARNING_OBJECT (jxsdec, "No input caps were set?");
-    return GST_FLOW_NOT_NEGOTIATED;
-  }
-
-  GstMapInfo in_map = GST_MAP_INFO_INIT;
-  GstVideoFrame video_frame = GST_VIDEO_FRAME_INIT;
-
-  // Map input buffer
-  if (!gst_buffer_map (frame->input_buffer, &in_map, GST_MAP_READ))
-    goto input_buffer_map_failure;
-
-  if (jxsdec->jxs_decoder == NULL) {
-    flow = gst_svt_jpeg_xs_dec_init_decoder (jxsdec, in_map.data, in_map.size);
-    if (flow != GST_FLOW_OK)
-      goto out_unmap;
-  }
   // Decoder input/output frame struct
   svt_jpeg_xs_frame_t decoder_frame;
 
@@ -455,49 +442,45 @@ gst_svt_jpeg_xs_dec_handle_frame (GstVideoDecoder * vdecoder,
   {
     svt_jpeg_xs_bitstream_buffer_t in_buf;
 
-    in_buf.buffer = in_map.data;
-    in_buf.allocation_size = in_map.size;
-    in_buf.used_size = in_map.size;
+    if (data_size > G_MAXUINT32)
+      return GST_FLOW_ERROR;
+
+    in_buf.buffer = (uint8_t *) data;
+    in_buf.allocation_size = data_size;
+    in_buf.used_size = data_size;
 
     decoder_frame.bitstream = in_buf;
   }
-
-  // Allocate output frame
-  {
-    flow = gst_video_decoder_allocate_output_frame (vdecoder, frame);
-
-    if (flow != GST_FLOW_OK)
-      goto allocate_output_frame_failure;
-  }
-
-  // Map output frame
-  if (!gst_video_frame_map (&video_frame, &jxsdec->output_state->info,
-          frame->output_buffer, GST_MAP_WRITE))
-    goto output_frame_map_error;
 
   // Set up decoder output image struct
   {
     svt_jpeg_xs_image_buffer_t img = { {0,}
     };
 
-    img.data_yuv[0] = GST_VIDEO_FRAME_PLANE_DATA (&video_frame, 0);
-    img.data_yuv[1] = GST_VIDEO_FRAME_PLANE_DATA (&video_frame, 1);
-    img.data_yuv[2] = GST_VIDEO_FRAME_PLANE_DATA (&video_frame, 2);
+    img.data_yuv[0] = (guint8 *) GST_VIDEO_FRAME_PLANE_DATA (video_frame, 0)
+        + field * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 0);
+    img.data_yuv[1] = (guint8 *) GST_VIDEO_FRAME_PLANE_DATA (video_frame, 1)
+        + field * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 1);
+    img.data_yuv[2] = (guint8 *) GST_VIDEO_FRAME_PLANE_DATA (video_frame, 2)
+        + field * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 2);
 
     // Note: wants stride in pixels not in bytes (might need tweaks for 10-bit)
-    img.stride[0] = GST_VIDEO_FRAME_COMP_STRIDE (&video_frame, 0)
-        / GST_VIDEO_FRAME_COMP_PSTRIDE (&video_frame, 0);
-    img.stride[1] = GST_VIDEO_FRAME_COMP_STRIDE (&video_frame, 1)
-        / GST_VIDEO_FRAME_COMP_PSTRIDE (&video_frame, 1);
-    img.stride[2] = GST_VIDEO_FRAME_COMP_STRIDE (&video_frame, 2)
-        / GST_VIDEO_FRAME_COMP_PSTRIDE (&video_frame, 2);
+    img.stride[0] = n_fields * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 0)
+        / GST_VIDEO_FRAME_COMP_PSTRIDE (video_frame, 0);
+    img.stride[1] = n_fields * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 1)
+        / GST_VIDEO_FRAME_COMP_PSTRIDE (video_frame, 1);
+    img.stride[2] = n_fields * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 2)
+        / GST_VIDEO_FRAME_COMP_PSTRIDE (video_frame, 2);
 
-    img.alloc_size[0] = GST_VIDEO_FRAME_COMP_STRIDE (&video_frame, 0)
-        * GST_VIDEO_FRAME_COMP_HEIGHT (&video_frame, 0);
-    img.alloc_size[1] = GST_VIDEO_FRAME_COMP_STRIDE (&video_frame, 1)
-        * GST_VIDEO_FRAME_COMP_HEIGHT (&video_frame, 1);
-    img.alloc_size[2] = GST_VIDEO_FRAME_COMP_STRIDE (&video_frame, 2)
-        * GST_VIDEO_FRAME_COMP_HEIGHT (&video_frame, 2);
+    img.alloc_size[0] = GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 0)
+        * GST_VIDEO_FRAME_COMP_HEIGHT (video_frame, 0)
+        - field * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 0);
+    img.alloc_size[1] = GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 1)
+        * GST_VIDEO_FRAME_COMP_HEIGHT (video_frame, 1)
+        - field * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 1);
+    img.alloc_size[2] = GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 2)
+        * GST_VIDEO_FRAME_COMP_HEIGHT (video_frame, 2)
+        - field * GST_VIDEO_FRAME_COMP_STRIDE (video_frame, 2);
 
     for (int i = 0; i < 3; ++i) {
       GST_TRACE_OBJECT (jxsdec, "img stride[%u] = %u, alloc_size[%u]: %u",
@@ -509,7 +492,7 @@ gst_svt_jpeg_xs_dec_handle_frame (GstVideoDecoder * vdecoder,
 
   decoder_frame.user_prv_ctx_ptr = NULL;
 
-  GST_TRACE_OBJECT (jxsdec, "Sending frame to decoder ..");
+  GST_TRACE_OBJECT (jxsdec, "Sending frame or field to decoder ..");
 
   SvtJxsErrorType_t dec_ret;
 
@@ -536,6 +519,141 @@ gst_svt_jpeg_xs_dec_handle_frame (GstVideoDecoder * vdecoder,
       goto get_frame_error;
   }
 
+  GST_TRACE_OBJECT (jxsdec, "Decoding finished OK");
+  return GST_FLOW_OK;
+
+send_packet_error:
+  {
+    GST_ELEMENT_ERROR (jxsdec, STREAM, DECODE, (NULL),
+        ("Error submitting image for decoding: 0x%08x", dec_ret));
+    return GST_FLOW_ERROR;
+  }
+
+get_frame_error:
+  {
+    GstFlowReturn flow = GST_FLOW_ERROR;
+
+    GST_TRACE_OBJECT (jxsdec, "Decoding error 0x%08x", dec_ret);
+
+    GST_VIDEO_DECODER_ERROR (jxsdec, 1, STREAM, DECODE,
+        (NULL), ("Error decoding image, error code 0x%08x", dec_ret), flow);
+
+    if (flow == GST_FLOW_OK)
+      flow = GST_JPEG_XS_DEC_FLOW_DROP_FRAME;
+
+    return flow;
+  }
+}
+
+static GstFlowReturn
+gst_svt_jpeg_xs_dec_handle_frame (GstVideoDecoder * vdecoder,
+    GstVideoCodecFrame * frame)
+{
+  GstSvtJpegXsDec *jxsdec = GST_SVT_JPEG_XS_DEC (vdecoder);
+  GstFlowReturn flow = GST_FLOW_OK;
+  guint n_fields;
+
+  GST_LOG_OBJECT (jxsdec, "Frame to decode, size: %zu bytes",
+      gst_buffer_get_size (frame->input_buffer));
+
+  if (jxsdec->input_state == NULL) {
+    GST_WARNING_OBJECT (jxsdec, "No input caps were set?");
+    return GST_FLOW_NOT_NEGOTIATED;
+  }
+
+  if (GST_VIDEO_INFO_IS_INTERLACED (&jxsdec->input_state->info)) {
+    n_fields = 2;
+  } else {
+    n_fields = 1;
+  }
+
+  GstMapInfo in_map = GST_MAP_INFO_INIT;
+  GstVideoFrame video_frame = GST_VIDEO_FRAME_INIT;
+
+  // Map input buffer
+  if (!gst_buffer_map (frame->input_buffer, &in_map, GST_MAP_READ))
+    goto input_buffer_map_failure;
+
+  if (jxsdec->jxs_decoder == NULL) {
+    flow =
+        gst_svt_jpeg_xs_dec_init_decoder (jxsdec, n_fields, in_map.data,
+        in_map.size);
+
+    if (flow != GST_FLOW_OK)
+      goto out_unmap;
+  }
+  // Allocate output frame
+  {
+    flow = gst_video_decoder_allocate_output_frame (vdecoder, frame);
+
+    if (flow != GST_FLOW_OK)
+      goto allocate_output_frame_failure;
+  }
+
+  // Map output frame
+  if (!gst_video_frame_map (&video_frame, &jxsdec->output_state->info,
+          frame->output_buffer, GST_MAP_WRITE))
+    goto output_frame_map_error;
+
+  // Decode frame or fields
+  gsize offset = 0;
+
+  for (guint field = 0; field < n_fields; ++field) {
+    // Figure out where the second codestream/field starts in the data
+    // (should be size/2 unless vbr encoding was used, which is unlikely).
+    if (field == 1) {
+      svt_jpeg_xs_image_config_t img_config;
+      SvtJxsErrorType_t parse_ret;
+      uint32_t frame_size = 0;
+
+      parse_ret = svt_jpeg_xs_decoder_get_single_frame_size (in_map.data,
+          in_map.size, &img_config, &frame_size, FAST_SEARCH);
+
+      // This shouldn't really happen because at this point we have already
+      // decoded the first field without errors. In the unlikely case it does
+      // happen, let's check the midpoint for the second codestream header and
+      // otherwise just decode the first field again into the second field.
+      if (parse_ret != SvtJxsErrorNone) {
+        if (in_map.size >= 8 &&
+            GST_READ_UINT32_BE (in_map.data + in_map.size / 2) == 0xff10ff50) {
+          frame_size = in_map.size / 2;
+        } else {
+          GST_ELEMENT_WARNING (jxsdec, STREAM, DECODE, (NULL),
+              ("Unexpected error 0x%08x getting codestream length of field 1 "
+                  "to determine offset of codestream for field 2. Will decode "
+                  "field 1 again into field 2", parse_ret));
+          frame_size = 0;
+        }
+      }
+
+      offset = frame_size;
+    }
+
+    if (n_fields == 2) {
+      GST_TRACE_OBJECT (jxsdec,
+          "Decoding field %u of 2 @ %zu", field + 1, offset);
+    }
+
+    flow = gst_svt_jpeg_xs_dec_decode_codestream (jxsdec, field, n_fields,
+        &video_frame, in_map.data + offset, in_map.size - offset);
+
+    if (flow != GST_FLOW_OK)
+      break;
+  }
+
+  if (n_fields == 2) {
+    GST_BUFFER_FLAG_SET (video_frame.buffer, GST_VIDEO_BUFFER_FLAG_INTERLACED);
+    if ((video_frame.flags & GST_VIDEO_FRAME_FLAG_TFF)) {
+      GST_BUFFER_FLAG_SET (video_frame.buffer, GST_VIDEO_BUFFER_FLAG_TFF);
+    } else {
+      GST_BUFFER_FLAG_UNSET (video_frame.buffer, GST_VIDEO_BUFFER_FLAG_TFF);
+    }
+  } else {
+    GST_BUFFER_FLAG_UNSET (video_frame.buffer,
+        GST_VIDEO_BUFFER_FLAG_INTERLACED);
+    GST_BUFFER_FLAG_UNSET (video_frame.buffer, GST_VIDEO_BUFFER_FLAG_TFF);
+  }
+
   // Unmap output frame and input buffer
   {
     gst_video_frame_unmap (&video_frame);
@@ -545,8 +663,12 @@ gst_svt_jpeg_xs_dec_handle_frame (GstVideoDecoder * vdecoder,
     in_map.memory = NULL;
   }
 
-  // And output!
-  flow = gst_video_decoder_finish_frame (vdecoder, frame);
+  // And output! (or drop)
+  if (flow == GST_FLOW_OK) {
+    flow = gst_video_decoder_finish_frame (vdecoder, frame);
+  } else {
+    flow = gst_video_decoder_drop_frame (vdecoder, frame);
+  }
 
   frame = NULL;
 
@@ -584,22 +706,6 @@ allocate_output_frame_failure:
 output_frame_map_error:
   {
     GST_ERROR_OBJECT (jxsdec, "Couldn't map output frame!");
-    flow = GST_FLOW_ERROR;
-    goto out_unmap;
-  }
-
-send_packet_error:
-  {
-    GST_ELEMENT_ERROR (jxsdec, STREAM, DECODE, (NULL),
-        ("Error submitting image for decoding: 0x%08x", dec_ret));
-    flow = GST_FLOW_ERROR;
-    goto out_unmap;
-  }
-
-get_frame_error:
-  {
-    GST_ELEMENT_ERROR (jxsdec, STREAM, DECODE, (NULL),
-        ("Error decoding image, error code 0x%08x", dec_ret));
     flow = GST_FLOW_ERROR;
     goto out_unmap;
   }

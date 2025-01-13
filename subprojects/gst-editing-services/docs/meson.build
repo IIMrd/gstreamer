@@ -1,9 +1,5 @@
 build_hotdoc = false
 
-if get_option('doc').disabled()
-  subdir_done()
-endif
-
 if meson.is_cross_build()
     if get_option('doc').enabled()
         error('Documentation enabled but building the doc while cross building is not supported yet.')
@@ -31,12 +27,13 @@ if not build_gir
     subdir_done()
 endif
 
-required_hotdoc_extensions = ['gi-extension', 'gst-extension']
 if gst_dep.type_name() == 'internal'
     gst_proj = subproject('gstreamer')
     plugins_cache_generator = gst_proj.get_variable('plugins_cache_generator')
 else
-    plugins_cache_generator = find_program(join_paths(gst_dep.get_variable('libexecdir'), 'gstreamer-' + apiversion, 'gst-plugins-doc-cache-generator'), required: false)
+    plugins_cache_generator = find_program('gst-plugins-doc-cache-generator',
+        dirs: [join_paths(gst_dep.get_variable('libexecdir', default_value: ''), 'gstreamer-' + api_version)],
+        required: false)
 endif
 
 plugins_cache = join_paths(meson.current_source_dir(), 'gst_plugins_cache.json')
@@ -52,6 +49,9 @@ else
     warning('GStreamer plugin inspector for documentation not found, can\'t update the cache')
 endif
 
+if get_option('doc').disabled()
+  subdir_done()
+endif
 hotdoc_p = find_program('hotdoc', required: get_option('doc'))
 if not hotdoc_p.found()
     message('Hotdoc not found, not building the documentation')
@@ -70,6 +70,7 @@ if not hotdoc_version.version_compare(hotdoc_req)
 endif
 
 hotdoc = import('hotdoc')
+required_hotdoc_extensions = ['gi-extension', 'gst-extension']
 foreach extension: required_hotdoc_extensions
     if not hotdoc.has_extensions(extension)
         if get_option('doc').enabled()
@@ -99,7 +100,7 @@ endforeach
 
 hotdoc = import('hotdoc')
 libs_doc = [hotdoc.generate_doc('gst-editing-services',
-    project_version: apiversion,
+    project_version: api_version,
     extra_assets: [join_paths(meson.current_source_dir(), 'images')],
     gi_c_sources: ges_sources + ges_headers,
     gi_c_source_roots: [join_paths(meson.current_source_dir(), '../ges/')],
@@ -125,7 +126,7 @@ gst_plugins_doc = run_command(
     plugins_cache_generator,
     'hotdoc-config',
     '--builddir', meson.current_build_dir(),
-    '--project_version', apiversion,
+    '--project_version', api_version,
     '--sitemap', cdir / 'plugins/sitemap.txt',
     '--index', cdir / 'plugins/index.md',
     '--gst_index', cdir / 'plugins/index.md',

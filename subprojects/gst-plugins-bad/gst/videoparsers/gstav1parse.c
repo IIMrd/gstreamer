@@ -58,8 +58,8 @@
  * ## Example launch line to generate annex B format AV1 stream:
  * ```
  * gst-launch-1.0 filesrc location=sample.av1 ! ivfparse ! av1parse !  \
- *   video/x-av1,alignment=\(string\)tu,stream-format=\(string\)annexb ! \
- *   filesink location=matroskamux ! filesink location=trans.mkv
+ *   video/x-av1,alignment=\(string\)tu,stream-format=\(string\)obu-stream ! \
+ *   matroskamux ! filesink location=trans.mkv
  * ```
  *
  * Since: 1.20
@@ -73,6 +73,7 @@
 #include <gst/base/gstbitwriter.h>
 #include <gst/codecparsers/gstav1parser.h>
 #include <gst/video/video.h>
+#include <gst/pbutils/pbutils.h>
 #include "gstvideoparserselements.h"
 #include "gstav1parse.h"
 
@@ -100,6 +101,8 @@ typedef enum
 struct _GstAV1Parse
 {
   GstBaseParse parent;
+
+  gboolean first_frame;
 
   gint width;
   gint height;
@@ -329,6 +332,7 @@ gst_av1_parse_reset (GstAV1Parse * self)
   self->show_frame = FALSE;
   self->last_parsed_offset = 0;
   self->highest_spatial_id = 0;
+  self->first_frame = TRUE;
   gst_av1_parse_reset_obu_data_state (self);
   g_clear_pointer (&self->colorimetry, g_free);
   g_clear_pointer (&self->parser, gst_av1_parser_free);
@@ -1502,7 +1506,7 @@ new_tu:
   if (ret) {
     if (self->within_one_frame)
       GST_WARNING_OBJECT (self,
-          "Start a new temporal unit with incompleted frame.");
+          "Start a new temporal unit with incomplete frame.");
 
     gst_av1_parse_reset_obu_data_state (self);
     gst_av1_parse_reset_tu_timestamp (self);
@@ -1589,7 +1593,6 @@ gst_av1_parse_handle_one_obu (GstAV1Parse * self, GstAV1OBU * obu,
      start a TU. We only check TD here. */
   if (obu->obu_type == GST_AV1_OBU_TEMPORAL_DELIMITER) {
     gst_av1_parse_reset_obu_data_state (self);
-    gst_av1_parse_reset_tu_timestamp (self);
 
     if (check_new_tu) {
       *check_new_tu = TRUE;
@@ -1946,20 +1949,15 @@ again:
     if (res != GST_AV1_PARSER_OK)
       break;
 
-    /* Take the DTS from the first OBU of the TU */
-    if (!GST_CLOCK_TIME_IS_VALID (self->buffer_dts))
-      self->buffer_dts = GST_BUFFER_DTS (buffer);
-
     check_new_tu = FALSE;
-    if (self->align == GST_AV1_PARSE_ALIGN_TEMPORAL_UNIT
-        || self->align == GST_AV1_PARSE_ALIGN_TEMPORAL_UNIT_ANNEX_B) {
-      res = gst_av1_parse_handle_one_obu (self, &obu, &frame_complete,
-          &check_new_tu);
-    } else {
-      res = gst_av1_parse_handle_one_obu (self, &obu, &frame_complete, NULL);
-    }
+    res = gst_av1_parse_handle_one_obu (self, &obu, &frame_complete,
+        &check_new_tu);
     if (res != GST_AV1_PARSER_OK)
       break;
+
+    /* Take the DTS from the first OBU of the TU */
+    if (!GST_CLOCK_TIME_IS_VALID (self->buffer_dts) || check_new_tu)
+      self->buffer_dts = GST_BUFFER_DTS (buffer);
 
     if (check_new_tu && (gst_adapter_available (self->cache_out) ||
             gst_adapter_available (self->frame_cache))) {
@@ -2286,8 +2284,36 @@ gst_av1_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
   if (!frame->buffer)
     return GST_FLOW_OK;
 
+  if (self->first_frame) {
+    GstTagList *taglist;
+    GstCaps *caps;
+
+    /* codec tag */
+    caps = gst_pad_get_current_caps (GST_BASE_PARSE_SRC_PAD (parse));
+    if (caps == NULL) {
+      if (GST_PAD_IS_FLUSHING (GST_BASE_PARSE_SRC_PAD (self))) {
+        GST_INFO_OBJECT (self, "Src pad is flushing");
+        return GST_FLOW_FLUSHING;
+      } else {
+        GST_INFO_OBJECT (self, "Src pad is not negotiated!");
+        return GST_FLOW_NOT_NEGOTIATED;
+      }
+    }
+
+    taglist = gst_tag_list_new_empty ();
+    gst_pb_utils_add_codec_description_to_tag_list (taglist,
+        GST_TAG_VIDEO_CODEC, caps);
+    gst_caps_unref (caps);
+
+    gst_base_parse_merge_tags (parse, taglist, GST_TAG_MERGE_REPLACE);
+    gst_tag_list_unref (taglist);
+
+    /* also signals the end of first-frame processing */
+    self->first_frame = FALSE;
+  }
+
   if (self->align == GST_AV1_PARSE_ALIGN_FRAME) {
-    /* Input buffers may may contain more than one frames inside its buffer.
+    /* Input buffers may contain more than one frames inside its buffer.
        When splitting a TU into frames, the base parse class only assign the
        PTS to the first frame and leave the others PTS invalid. But in fact,
        all decode only frames should have invalid PTS while showable frames
