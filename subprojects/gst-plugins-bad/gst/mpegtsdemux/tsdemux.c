@@ -239,6 +239,7 @@ guint64 system_time = 1;
       "systemstream = (boolean) FALSE; " \
     "video/x-h264,stream-format=(string)byte-stream;" \
     "video/x-h265,stream-format=(string)byte-stream;" \
+    "video/x-h266,stream-format=(string)byte-stream;" \
     "video/x-vp9;" \
     "video/x-av1,stream-format=(string)obu-stream,alignment=(string)frame;" \
     "video/x-dirac;" \
@@ -1864,6 +1865,11 @@ create_pad_for_stream (MpegTSBase *base, MpegTSBaseStream *bstream,
     case GST_MPEGTS_STREAM_TYPE_VIDEO_HEVC:
       is_video = TRUE;
       caps = gst_caps_new_simple ("video/x-h265",
+          "stream-format", G_TYPE_STRING, "byte-stream", NULL);
+      break;
+    case GST_MPEGTS_STREAM_TYPE_VIDEO_VVC:
+      is_video = TRUE;
+      caps = gst_caps_new_simple ("video/x-h266",
           "stream-format", G_TYPE_STRING, "byte-stream", NULL);
       break;
     case GST_MPEGTS_STREAM_TYPE_VIDEO_JP2K:

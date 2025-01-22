@@ -1461,12 +1461,6 @@ gst_matroska_demux_parse_stream (GstMatroskaDemux * demux, GstEbmlRead * ebml,
         break;
       }
 
-      default:
-        GST_WARNING ("Unknown TrackEntry subelement 0x%x - ignoring", id);
-        /* pass-through */
-
-        /* we ignore these because they're nothing useful (i.e. crap)
-         * or simply not implemented yet. */
       case GST_MATROSKA_ID_TRACKMINCACHE:
       case GST_MATROSKA_ID_TRACKMAXCACHE:
       case GST_MATROSKA_ID_MAXBLOCKADDITIONID:
@@ -1478,6 +1472,12 @@ gst_matroska_demux_parse_stream (GstMatroskaDemux * demux, GstEbmlRead * ebml,
       case GST_MATROSKA_ID_CODECINFOURL:
       case GST_MATROSKA_ID_CODECDOWNLOADURL:
       case GST_MATROSKA_ID_CODECDECODEALL:
+        /* we ignore these because they're nothing useful (i.e. crap)
+         * or simply not implemented yet. */
+        ret = gst_ebml_read_skip (ebml);
+        break;
+      default:
+        GST_WARNING ("Unknown TrackEntry subelement 0x%x - ignoring", id);
         ret = gst_ebml_read_skip (ebml);
         break;
     }
@@ -6366,8 +6366,8 @@ gst_matroska_demux_handle_sink_event (GstPad * pad, GstObject * parent,
       demux->cluster_offset = 0;
       demux->cluster_prevsize = 0;
       GST_OBJECT_UNLOCK (demux);
-      /* fall-through */
     }
+      /* FALLTHROUGH */
     default:
       res = gst_pad_event_default (pad, parent, event);
       break;

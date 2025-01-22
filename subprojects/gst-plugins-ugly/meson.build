@@ -1,6 +1,6 @@
 project('gst-plugins-ugly', 'c',
-  version : '1.25.0.1',
-  meson_version : '>= 1.3',
+  version : '1.25.1.1',
+  meson_version : '>= 1.4',
   default_options : [ 'warning_level=1',
                       'buildtype=debugoptimized' ])
 
@@ -32,6 +32,7 @@ api_version = '1.0'
 static_build = get_option('default_library') == 'static'
 plugins_install_dir = join_paths(get_option('libdir'), 'gstreamer-1.0')
 plugins = []
+plugin_sources = {}
 
 cc = meson.get_compiler('c')
 if have_cxx
@@ -244,19 +245,22 @@ else
 endif
 
 warning_flags = [
-  '-Wmissing-declarations',
-  '-Wredundant-decls',
-  '-Wwrite-strings',
+  '-Waddress',
+  '-Waggregate-return',
   '-Wformat',
   '-Wformat-nonliteral',
   '-Wformat-security',
+  '-Wimplicit-fallthrough=3',
   '-Winit-self',
+  '-Wmissing-declarations',
   '-Wmissing-include-dirs',
-  '-Waddress',
   '-Wno-multichar',
-  '-Wvla',
   '-Wpointer-arith',
-  '-Waggregate-return',
+  '-Wredundant-decls',
+  '-Wshift-negative-value',
+  '-Wtype-limits',
+  '-Wvla',
+  '-Wwrite-strings',
   '-fno-strict-aliasing',
   # Symbol visibility
   '-fvisibility=hidden',
@@ -319,6 +323,12 @@ endif
 gpl_allowed = get_option('gpl').allowed()
 
 python3 = import('python').find_installation()
+
+if host_machine.system() == 'windows'
+  pathsep = ';'
+else
+  pathsep = ':'
+endif
 
 subdir('gst')
 subdir('ext')

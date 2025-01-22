@@ -69,11 +69,13 @@ static const struct
   { AV_CH_SURROUND_DIRECT_LEFT, GST_AUDIO_CHANNEL_POSITION_SURROUND_LEFT },
   { AV_CH_SURROUND_DIRECT_RIGHT, GST_AUDIO_CHANNEL_POSITION_SURROUND_RIGHT },
   { AV_CH_LOW_FREQUENCY_2, GST_AUDIO_CHANNEL_POSITION_LFE2 },
+#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(56, 58, 100)
   { AV_CH_TOP_SIDE_LEFT, GST_AUDIO_CHANNEL_POSITION_TOP_SIDE_LEFT },
   { AV_CH_TOP_SIDE_RIGHT, GST_AUDIO_CHANNEL_POSITION_TOP_SIDE_RIGHT },
   { AV_CH_BOTTOM_FRONT_CENTER, GST_AUDIO_CHANNEL_POSITION_BOTTOM_FRONT_CENTER },
   { AV_CH_BOTTOM_FRONT_LEFT, GST_AUDIO_CHANNEL_POSITION_BOTTOM_FRONT_LEFT },
   { AV_CH_BOTTOM_FRONT_RIGHT, GST_AUDIO_CHANNEL_POSITION_BOTTOM_FRONT_RIGHT },
+#endif
 };
 /* *INDENT-ON* */
 
@@ -2924,6 +2926,8 @@ GstAudioFormat
 gst_ffmpeg_smpfmt_to_audioformat (enum AVSampleFormat sample_fmt,
     GstAudioLayout * layout)
 {
+  GstAudioFormat ret = GST_AUDIO_FORMAT_UNKNOWN;
+
   if (layout)
     *layout = GST_AUDIO_LAYOUT_NON_INTERLEAVED;
 
@@ -2931,42 +2935,48 @@ gst_ffmpeg_smpfmt_to_audioformat (enum AVSampleFormat sample_fmt,
     case AV_SAMPLE_FMT_U8:
       if (layout)
         *layout = GST_AUDIO_LAYOUT_INTERLEAVED;
+      /* FALLTHROUGH */
     case AV_SAMPLE_FMT_U8P:
-      return GST_AUDIO_FORMAT_U8;
+      ret = GST_AUDIO_FORMAT_U8;
       break;
 
     case AV_SAMPLE_FMT_S16:
       if (layout)
         *layout = GST_AUDIO_LAYOUT_INTERLEAVED;
+      /* FALLTHROUGH */
     case AV_SAMPLE_FMT_S16P:
-      return GST_AUDIO_FORMAT_S16;
+      ret = GST_AUDIO_FORMAT_S16;
       break;
 
     case AV_SAMPLE_FMT_S32:
       if (layout)
         *layout = GST_AUDIO_LAYOUT_INTERLEAVED;
+      /* FALLTHROUGH */
     case AV_SAMPLE_FMT_S32P:
-      return GST_AUDIO_FORMAT_S32;
+      ret = GST_AUDIO_FORMAT_S32;
       break;
+
     case AV_SAMPLE_FMT_FLT:
       if (layout)
         *layout = GST_AUDIO_LAYOUT_INTERLEAVED;
+      /* FALLTHROUGH */
     case AV_SAMPLE_FMT_FLTP:
-      return GST_AUDIO_FORMAT_F32;
+      ret = GST_AUDIO_FORMAT_F32;
       break;
 
     case AV_SAMPLE_FMT_DBL:
       if (layout)
         *layout = GST_AUDIO_LAYOUT_INTERLEAVED;
+      /* FALLTHROUGH */
     case AV_SAMPLE_FMT_DBLP:
-      return GST_AUDIO_FORMAT_F64;
+      ret = GST_AUDIO_FORMAT_F64;
       break;
 
     default:
-      /* .. */
-      return GST_AUDIO_FORMAT_UNKNOWN;
       break;
   }
+
+  return ret;
 }
 
 /* Convert a FFMPEG Sample Format and optional AVCodecContext

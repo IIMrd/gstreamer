@@ -1,6 +1,6 @@
 project('gst-plugins-bad', 'c', 'cpp',
-  version : '1.25.0.1',
-  meson_version : '>= 1.3',
+  version : '1.25.1.1',
+  meson_version : '>= 1.4',
   default_options : [ 'warning_level=1',
                       'buildtype=debugoptimized' ])
 
@@ -37,6 +37,7 @@ osxversion = curversion + 1
 plugins_install_dir = join_paths(get_option('libdir'), 'gstreamer-1.0')
 static_build = get_option('default_library') == 'static'
 plugins = []
+plugin_sources = {}
 gst_libraries = []
 
 cc = meson.get_compiler('c')
@@ -160,6 +161,7 @@ check_headers = [
   ['HAVE_NETINET_IP_H', 'netinet/ip.h'],
   ['HAVE_NETINET_TCP_H', 'netinet/tcp.h'],
   ['HAVE_PTHREAD_H', 'pthread.h'],
+  ['HAVE_PWD_H', 'pwd.h'],
   ['HAVE_STDINT_H', 'stdint.h'],
   ['HAVE_STDLIB_H', 'stdlib.h'],
   ['HAVE_STRINGS_H', 'strings.h'],
@@ -219,23 +221,30 @@ cdata.set_quoted('GST_LICENSE', 'LGPL')
 cdata.set_quoted('LIBDIR', join_paths(get_option('prefix'), get_option('libdir')))
 cdata.set_quoted('LOCALEDIR', join_paths(get_option('prefix'), get_option('localedir')))
 
+# NOTE: Keep entries alphabetically sorted
 warning_flags = [
-  '-Wmissing-declarations',
-  '-Wredundant-decls',
-  '-Wwrite-strings',
+  '-Waddress',
   '-Wformat',
   '-Wformat-security',
+  '-Wimplicit-fallthrough=3',
   '-Winit-self',
+  '-Wmissing-declarations',
   '-Wmissing-include-dirs',
-  '-Waddress',
+  '-Wmissing-parameter-type',
   '-Wno-multichar',
-  '-Wvla',
   '-Wpointer-arith',
+  '-Wredundant-decls',
+  '-Wshift-negative-value',
+  '-Wtype-limits',
+  '-Wundef',
+  '-Wvla',
+  '-Wwrite-strings',
 ]
 
 warning_c_flags = [
   '-Wmissing-prototypes',
   '-Wold-style-definition',
+  '-Waggregate-return',
 ]
 
 warning_cxx_flags = [
@@ -568,6 +577,12 @@ pkgconfig.generate(
 )
 
 gpl_allowed = get_option('gpl').allowed()
+
+if host_machine.system() == 'windows'
+  pathsep = ';'
+else
+  pathsep = ':'
+endif
 
 subdir('gst-libs')
 subdir('gst')

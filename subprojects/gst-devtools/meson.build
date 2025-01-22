@@ -1,6 +1,6 @@
 project('gst-devtools', 'c',
-  version : '1.25.0.1',
-  meson_version : '>= 1.3',
+  version : '1.25.1.1',
+  meson_version : '>= 1.4',
   default_options : [ 'warning_level=1',
                       'buildtype=debugoptimized' ])
 
@@ -127,20 +127,27 @@ if gst_debug_disabled and cc.has_argument('-Wno-unused')
   add_project_arguments('-Wno-unused', language: 'c')
 endif
 
+# NOTE: Keep entries alphabetically sorted
 warning_flags = [
-  '-Wmissing-declarations',
-  '-Wmissing-prototypes',
-  '-Wredundant-decls',
-  '-Wundef',
-  '-Wwrite-strings',
+  '-Waddress',
+  '-Waggregate-return',
   '-Wformat',
   '-Wformat-security',
+  '-Wimplicit-fallthrough=3',
   '-Winit-self',
+  '-Wmissing-declarations',
   '-Wmissing-include-dirs',
-  '-Waddress',
+  '-Wmissing-parameter-type',
+  '-Wmissing-prototypes',
   '-Wno-multichar',
-  '-Wvla',
+  '-Wold-style-definition',
   '-Wpointer-arith',
+  '-Wredundant-decls',
+  '-Wshift-negative-value',
+  '-Wtype-limits',
+  '-Wundef',
+  '-Wvla',
+  '-Wwrite-strings',
 ]
 
 foreach extra_arg : warning_flags
@@ -160,10 +167,17 @@ pkgconfig_subdirs = ['gstreamer-1.0']
 
 gst_plugins_doc_dep = []
 plugins = []
+plugin_sources = {}
 i18n = import('i18n')
 
 static_build = get_option('default_library') == 'static'
 gst_libraries = []
+
+if host_machine.system() == 'windows'
+  pathsep = ';'
+else
+  pathsep = ':'
+endif
 
 python_mod = import('python')
 python3 = python_mod.find_installation()

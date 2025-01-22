@@ -1,6 +1,6 @@
 project('gst-plugins-base', 'c',
-  version : '1.25.0.1',
-  meson_version : '>= 1.3',
+  version : '1.25.1.1',
+  meson_version : '>= 1.4',
   default_options : [ 'warning_level=1',
                       'buildtype=debugoptimized' ])
 
@@ -47,6 +47,7 @@ osxversion = curversion + 1
 plugins_install_dir = join_paths(get_option('libdir'), 'gstreamer-1.0')
 static_build = get_option('default_library') == 'static'
 plugins = []
+plugin_sources = {}
 gst_libraries = []
 
 cc = meson.get_compiler('c')
@@ -231,25 +232,32 @@ endif
 core_conf.set_quoted('GST_INSTALL_PLUGINS_HELPER', install_plugins_helper)
 
 warning_flags = [
-  '-Wmissing-declarations',
-  '-Wredundant-decls',
-  '-Wundef',
-  '-Wwrite-strings',
+  '-Waddress',
   '-Wformat',
   '-Wformat-nonliteral',
   '-Wformat-security',
+  '-Wimplicit-fallthrough=3',
   '-Winit-self',
+  '-Wmissing-declarations',
   '-Wmissing-include-dirs',
-  '-Waddress',
+  '-Wmissing-parameter-type',
   '-Wno-multichar',
-  '-Wvla',
+  '-Wold-style-definition',
   '-Wpointer-arith',
+  '-Wredundant-decls',
+  '-Wshift-negative-value',
+  '-Wtype-limits',
+  '-Wundef',
+  '-Wvla',
+  '-Wwrite-strings',
 ]
 
+# C only warning flags
 warning_c_flags = [
   '-Wmissing-prototypes',
 ]
 
+# C++ only warning flags
 warning_cxx_flags = [
   '-Waggregate-return',
 ]
@@ -481,6 +489,12 @@ pkgconfig_variables = [
 pkgconfig_subdirs = ['gstreamer-1.0']
 
 meson_pkg_config_file_fixup_script = find_program('scripts/meson-pkg-config-file-fixup.py')
+
+if host_machine.system() == 'windows'
+  pathsep = ';'
+else
+  pathsep = ':'
+endif
 
 python3 = import('python').find_installation()
 subdir('gst-libs')

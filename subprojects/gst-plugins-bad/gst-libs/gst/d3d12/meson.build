@@ -13,6 +13,7 @@ d3d12_sources = [
   'gstd3d12format.cpp',
   'gstd3d12frame.cpp',
   'gstd3d12memory.cpp',
+  'gstd3d12mipgen.cpp',
   'gstd3d12utils.cpp',
 ]
 
@@ -58,6 +59,10 @@ else
     '-Wno-unknown-pragmas',
     # Various warnings in DirectX-Headers headers
     '-Wno-switch',
+    # Ignore missing fallthrough in DirectX-Headers headers
+    '-Wimplicit-fallthrough=0',
+    # Ignore definition issues
+    '-Wno-undef',
   ])
 endif
 

@@ -77,6 +77,14 @@ vulkan_headers = files(
   'vulkan_fwd.h',
   'vulkan.h',
 )
+doc_sources = []
+foreach s: vulkan_sources + vulkan_headers
+  doc_sources += s.full_path()
+endforeach
+
+libs_sources += {
+  'vulkan': pathsep.join(doc_sources)
+}
 
 vulkan_priv_sources = []
 vulkan_xcb_sources = []
@@ -372,9 +380,12 @@ vulkan_enumtypes_c = custom_target('gstvulkanenum_c',
   command : [mkenums, glib_mkenums, '@OUTPUT@', '@INPUT@'])
 gen_sources += [vulkan_enumtypes_h]
 
+# Disable warnings of dependencies
+vulkan_args = cc.get_supported_arguments(['-Wno-aggregate-return'])
+
 gstvulkan = library('gstvulkan-' + api_version,
   vulkan_sources, vulkan_priv_sources, vulkan_wayland_sources, vulkan_xcb_sources, vulkan_enumtypes_c, vulkan_enumtypes_h,
-  c_args : gst_plugins_bad_args + vulkan_defines + ['-DBUILDING_GST_VULKAN', '-DG_LOG_DOMAIN="GStreamer-Vulkan"'],
+  c_args : gst_plugins_bad_args + vulkan_defines + vulkan_args + ['-DBUILDING_GST_VULKAN', '-DG_LOG_DOMAIN="GStreamer-Vulkan"'],
   objc_args : gst_plugins_bad_args + vulkan_defines + vulkan_objc_args + ['-DBUILDING_GST_VULKAN', '-DG_LOG_DOMAIN="GStreamer-Vulkan"'],
   include_directories : [configinc, libsinc],
   version : libversion,
@@ -443,6 +454,15 @@ if enabled_vulkan_winsys.contains('xcb')
   )
   vulkan_xcb_gir = []
   if build_gir
+    doc_sources = []
+    foreach s: vulkan_xcb_sources + vulkan_xcb_headers
+      doc_sources += s.full_path()
+    endforeach
+
+    libs_sources += {
+      'vulkan-xcb': pathsep.join(doc_sources)
+    }
+
     gir = {
       'sources' : vulkan_xcb_sources + vulkan_xcb_headers,
       'namespace' : 'GstVulkanXCB',
@@ -480,6 +500,15 @@ if enabled_vulkan_winsys.contains('wayland')
   )
   vulkan_wayland_gir = []
   if build_gir
+    doc_sources = []
+    foreach s: vulkan_wayland_sources + vulkan_wayland_headers
+      doc_sources += s.full_path()
+    endforeach
+
+    libs_sources += {
+      'vulkan-wayland': pathsep.join(doc_sources)
+    }
+
     gir = {
       'sources' : vulkan_wayland_sources + vulkan_wayland_headers,
       'namespace' : 'GstVulkanWayland',
