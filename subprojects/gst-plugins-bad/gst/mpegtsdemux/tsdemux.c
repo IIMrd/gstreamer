@@ -475,11 +475,12 @@ gst_ts_demux_class_init (GstTSDemuxClass *klass)
    * @ntp_timestamp_h: the ntp timestamp1
    * @ntp_timestamp_l: the ntp timestamp2
    * @pts: the pts (from running time)
+   * @stream_id: the stream id
    */
   tsdemux_signals[SIGNAL_NTP_TIMESTAMP] =
       g_signal_new ("ntp-timestamp", G_TYPE_FROM_CLASS (klass),
-      G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 3, G_TYPE_UINT,
-      G_TYPE_UINT, G_TYPE_UINT64);
+      G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 4, G_TYPE_UINT,
+      G_TYPE_UINT, G_TYPE_UINT64, G_TYPE_INT);
   //endmod
 
   element_class = GST_ELEMENT_CLASS (klass);
@@ -3016,7 +3017,8 @@ gst_ts_demux_queue_data (GstTSDemux *demux, TSDemuxStream *stream,
         packet->has_ntp_timestamp = 0;
 
         g_signal_emit (demux, tsdemux_signals[SIGNAL_NTP_TIMESTAMP],
-            0, demux->ntp_timestamp1, demux->ntp_timestamp2, stream->pts);
+            0, demux->ntp_timestamp1, demux->ntp_timestamp2, stream->pts,
+            packet->pid);
       }                         //endmod
 
       break;
